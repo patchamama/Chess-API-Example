@@ -43,7 +43,7 @@ def new_game():
     data = request.json
     game_id = data.get('game_id', 'default')
     player_color = data.get('color', 'white')
-    engine_strength = data.get('engine_strength', 20)  # 1-20, 20 = máximo
+    engine_strength = data.get('engine_strength', 5)  # 1-20, 20 = máximo
     
     games[game_id] = {
         'board': chess.Board(),
