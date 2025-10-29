@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Advanced Chess Game</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px 30px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+      }
+
+      .main-content {
+        display: grid;
+        grid-template-columns: 600px 1fr;
+        gap: 30px;
+        padding: 30px;
+      }
+
+      .board-section {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      #board {
+        width: 600px;
+        height: 600px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s;
+        text-transform: uppercase;
+      }
+
+      .btn-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #5568d3;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-secondary {
+        background: #48bb78;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #38a169;
+      }
+
+      .btn-danger {
+        background: #f56565;
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: #e53e3e;
+      }
+
+      .side-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .panel {
+        background: #f7fafc;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      }
+
+      .panel h3 {
+        color: #2d3748;
+        margin-bottom: 15px;
+        font-size: 1.3em;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+      }
+
+      .setting {
+        margin-bottom: 15px;
+      }
+
+      .setting label {
+        display: block;
+        margin-bottom: 5px;
+        color: #4a5568;
+        font-weight: 600;
+      }
+
+      select,
+      input[type='range'] {
+        width: 100%;
+        padding: 8px;
+        border: 2px solid #e2e8f0;
+        border-radius: 5px;
+        font-size: 14px;
+      }
+
+      input[type='range'] {
+        cursor: pointer;
+      }
+
+      .strength-value {
+        display: inline-block;
+        background: #667eea;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 5px;
+        margin-left: 10px;
+        font-weight: bold;
+      }
+
+      .status {
+        padding: 15px;
+        background: #edf2f7;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        border-left: 4px solid #667eea;
+      }
+
+      .status-turn {
+        font-weight: bold;
+        color: #2d3748;
+      }
+
+      .status-eval {
+        color: #4a5568;
+        margin-top: 5px;
+      }
+
+      #moveHistory {
+        max-height: 200px;
+        overflow-y: auto;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.8;
+      }
+
+      .move-item {
+        padding: 4px 8px;
+        margin: 2px 0;
+        border-radius: 3px;
+        background: #f7fafc;
+      }
+
+      .move-item:hover {
+        background: #e2e8f0;
+      }
+
+      .top-moves {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .move-card {
+        background: white;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        border-left: 4px solid #667eea;
+        transition: all 0.2s;
+      }
+
+      .move-card:hover {
+        transform: translateX(5px);
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .move-card.best {
+        border-left-color: #48bb78;
+        background: #f0fff4;
+      }
+
+      .move-card.capture {
+        border-left-color: #f56565;
+      }
+
+      .move-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+      }
+
+      .move-notation {
+        font-weight: bold;
+        font-size: 16px;
+        color: #2d3748;
+      }
+
+      .move-eval {
+        font-weight: bold;
+        padding: 4px 8px;
+        border-radius: 5px;
+        font-size: 14px;
+      }
+
+      .eval-positive {
+        background: #c6f6d5;
+        color: #22543d;
+      }
+
+      .eval-negative {
+        background: #fed7d7;
+        color: #742a2a;
+      }
+
+      .eval-neutral {
+        background: #e2e8f0;
+        color: #2d3748;
+      }
+
+      .move-details {
+        font-size: 12px;
+        color: #718096;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        margin-right: 5px;
+        font-weight: 600;
+      }
+
+      .badge-mate {
+        background: #fbd38d;
+        color: #744210;
+      }
+
+      .badge-capture {
+        background: #fc8181;
+        color: #742a2a;
+      }
+
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+        color: #667eea;
+      }
+
+      .loading.active {
+        display: block;
+      }
+
+      .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #667eea;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .captures-section {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .capture-item {
+        background: white;
+        padding: 8px;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+
+      @media (max-width: 1200px) {
+        .main-content {
+          grid-template-columns: 1fr;
+        }
+
+        #board {
+          width: 100%;
+          max-width: 600px;
+          margin: 0 auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>♟️ Advanced Chess Game</h1>
+        <p>Play against Stockfish, Lichess, or Chess.com engines</p>
+      </div>
+
+      <div class="main-content">
+        <!-- Board Section -->
+        <div class="board-section">
+          <div id="board"></div>
+
+          <div class="controls">
+            <button class="btn btn-primary" onclick="newGame()">
+              New Game
+            </button>
+            <button class="btn btn-secondary" onclick="analyzePosition()">
+              Analyze Position
+            </button>
+            <button class="btn btn-secondary" onclick="showCapturesOnly()">
+              Show Captures
+            </button>
+            <button class="btn btn-danger" onclick="compareEngines()">
+              Compare Engines
+            </button>
+          </div>
+
+          <div class="panel">
+            <h3>📜 Move History</h3>
+            <div id="moveHistory"></div>
+          </div>
+        </div>
+
+        <!-- Side Panel -->
+        <div class="side-panel">
+          <!-- Settings -->
+          <div class="panel">
+            <h3>⚙️ Game Settings</h3>
+
+            <div class="setting">
+              <label>Player Color:</label>
+              <select id="playerColor">
+                <option value="white" selected>White</option>
+                <option value="black">Black</option>
+              </select>
+            </div>
+
+            <div class="setting">
+              <label>Engine:</label>
+              <select id="engineType">
+                <option value="stockfish" selected>Stockfish (Local)</option>
+                <option value="lichess">Lichess API</option>
+                <option value="chesscom">Chess.com API</option>
+              </select>
+            </div>
+
+            <div class="setting">
+              <label>
+                Engine Strength:
+                <span class="strength-value" id="strengthValue">20</span>
+              </label>
+              <input
+                type="range"
+                id="engineStrength"
+                min="1"
+                max="20"
+                value="20"
+                oninput="updateStrength(this.value)"
+              />
+              <small style="color: #718096">1 = Beginner, 20 = Master</small>
+            </div>
+
+            <div class="setting">
+              <label>Analysis Depth:</label>
+              <input
+                type="range"
+                id="analysisDepth"
+                min="10"
+                max="30"
+                value="20"
+              />
+              <small style="color: #718096">Higher = Stronger but slower</small>
+            </div>
+          </div>
+
+          <!-- Status -->
+          <div class="panel">
+            <h3>📊 Game Status</h3>
+            <div class="status">
+              <div class="status-turn" id="turnStatus">White to move</div>
+              <div class="status-eval" id="evalStatus">Position: Equal</div>
+            </div>
+          </div>
+
+          <!-- Top Moves -->
+          <div class="panel">
+            <h3>🎯 Top Moves</h3>
+            <div class="loading" id="analysisLoading">
+              <div class="spinner"></div>
+              <div>Analyzing position...</div>
+            </div>
+            <div id="topMoves"></div>
+          </div>
+
+          <!-- Capture Moves -->
+          <div class="panel">
+            <h3>⚔️ Capture Moves</h3>
+            <div id="captureMoves">No captures available</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+
+    <script>
+      // Configuration
+      const API_URL = 'http://127.0.0.1:5000'
+      const GAME_ID = 'web-game-' + Date.now()
+
+      // Game state
+      let game = new Chess()
+      let board = null
+      let playerColor = 'white'
+      let currentEngine = 'stockfish'
+      let engineStrength = 20
+      let isPlayerTurn = true
+
+      // Initialize board
+      function initBoard() {
+        const config = {
+          draggable: true,
+          position: 'start',
+          onDragStart: onDragStart,
+          onDrop: onDrop,
+          onSnapEnd: onSnapEnd,
+        }
+
+        board = Chessboard('board', config)
+        $(window).resize(board.resize)
+      }
+
+      // Drag start handler
+      function onDragStart(source, piece, position, orientation) {
+        // Don't allow moves if game is over
+        if (game.game_over()) return false
+
+        // Only allow player to move their pieces
+        if (
+          (game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+          (game.turn() === 'b' && piece.search(/^w/) !== -1)
+        ) {
+          return false
+        }
+
+        // Only allow moves on player's turn
+        if (
+          (playerColor === 'white' && game.turn() !== 'w') ||
+          (playerColor === 'black' && game.turn() !== 'b')
+        ) {
+          return false
+        }
+      }
+
+      // Drop handler
+      function onDrop(source, target) {
+        // Check if move is legal
+        const move = game.move({
+          from: source,
+          to: target,
+          promotion: 'q', // Always promote to queen for simplicity
+        })
+
+        // Illegal move
+        if (move === null) return 'snapback'
+
+        // Make move on server
+        makeMove(move.from + move.to)
+      }
+
+      // Snap end handler
+      function onSnapEnd() {
+        board.position(game.fen())
+      }
+
+      // Update strength display
+      function updateStrength(value) {
+        engineStrength = parseInt(value)
+        document.getElementById('strengthValue').textContent = value
+
+        // Update on server
+        fetch(`${API_URL}/set_engine_strength`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            game_id: GAME_ID,
+            strength: engineStrength,
+          }),
+        })
+      }
+
+      // New game
+      async function newGame() {
+        playerColor = document.getElementById('playerColor').value
+        currentEngine = document.getElementById('engineType').value
+        engineStrength = parseInt(
+          document.getElementById('engineStrength').value
+        )
+
+        game.reset()
+        board.position('start')
+
+        if (playerColor === 'black') {
+          board.orientation('black')
+        } else {
+          board.orientation('white')
+        }
+
+        document.getElementById('moveHistory').innerHTML = ''
+        document.getElementById('topMoves').innerHTML = ''
+        document.getElementById('captureMoves').innerHTML =
+          'No captures available'
+
+        try {
+          const response = await fetch(`${API_URL}/new_game`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              game_id: GAME_ID,
+              color: playerColor,
+              engine_strength: engineStrength,
+            }),
+          })
+
+          const data = await response.json()
+
+          if (data.ai_move) {
+            setTimeout(() => {
+              game.move(data.ai_move)
+              board.position(game.fen())
+              addMoveToHistory(data.ai_move, 'AI')
+              updateStatus()
+              if (data.analysis) {
+                displayAnalysis(data.analysis)
+              }
+            }, 500)
+          }
+
+          updateStatus()
+        } catch (error) {
+          console.error('Error creating new game:', error)
+          alert('Error connecting to server. Make sure the backend is running!')
+        }
+      }
+
+      // Make move
+      async function makeMove(moveUci) {
+        try {
+          const response = await fetch(`${API_URL}/make_move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              game_id: GAME_ID,
+              move: moveUci,
+            }),
+          })
+
+          const data = await response.json()
+
+          if (data.success) {
+            addMoveToHistory(data.player_move, 'You')
+
+            if (data.ai_move) {
+              setTimeout(() => {
+                game.move(data.ai_move)
+                board.position(game.fen())
+                addMoveToHistory(data.ai_move, 'AI')
+                updateStatus()
+
+                if (data.analysis) {
+                  displayAnalysis(data.analysis)
+                }
+              }, 500)
+            }
+
+            if (data.game_over) {
+              setTimeout(() => {
+                if (game.in_checkmate()) {
+                  alert('Checkmate! Game over.')
+                } else if (game.in_draw()) {
+                  alert('Draw! Game over.')
+                } else if (game.in_stalemate()) {
+                  alert('Stalemate! Game over.')
+                }
+              }, 600)
+            }
+
+            updateStatus()
+          }
+        } catch (error) {
+          console.error('Error making move:', error)
+        }
+      }
+
+      // Analyze position
+      async function analyzePosition() {
+        document.getElementById('analysisLoading').classList.add('active')
+        document.getElementById('topMoves').innerHTML = ''
+
+        currentEngine = document.getElementById('engineType').value
+        const depth = parseInt(document.getElementById('analysisDepth').value)
+
+        try {
+          const response = await fetch(`${API_URL}/analyze_position`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              game_id: GAME_ID,
+              engine: currentEngine,
+              top_moves: 5,
+              depth: depth,
+            }),
+          })
+
+          const data = await response.json()
+          displayAnalysis(data)
+        } catch (error) {
+          console.error('Error analyzing position:', error)
+        } finally {
+          document.getElementById('analysisLoading').classList.remove('active')
+        }
+      }
+
+      // Display analysis
+      function displayAnalysis(analysis) {
+        const container = document.getElementById('topMoves')
+        container.innerHTML = ''
+
+        if (!analysis.top_moves || analysis.top_moves.length === 0) {
+          container.innerHTML = '<p>No analysis available</p>'
+          return
+        }
+
+        analysis.top_moves.forEach((move, index) => {
+          const moveCard = document.createElement('div')
+          moveCard.className =
+            'move-card' +
+            (index === 0 ? ' best' : '') +
+            (move.is_capture ? ' capture' : '')
+
+          const evalClass =
+            move.evaluation > 50
+              ? 'eval-positive'
+              : move.evaluation < -50
+              ? 'eval-negative'
+              : 'eval-neutral'
+
+          const evalText = move.is_mate
+            ? `Mate in ${Math.abs(move.mate_in)}`
+            : `${(move.evaluation / 100).toFixed(2)}`
+
+          moveCard.innerHTML = `
+                    <div class="move-header">
+                        <span class="move-notation">${index + 1}. ${
+            move.move
+          }</span>
+                        <span class="move-eval ${evalClass}">${evalText}</span>
+                    </div>
+                    <div class="move-details">
+                        ${
+                          move.is_mate
+                            ? '<span class="badge badge-mate">MATE</span>'
+                            : ''
+                        }
+                        ${
+                          move.is_capture
+                            ? '<span class="badge badge-capture">CAPTURE</span>'
+                            : ''
+                        }
+                        ${move.piece} from ${move.from_square} to ${
+            move.to_square
+          }
+                    </div>
+                `
+
+          container.appendChild(moveCard)
+        })
+
+        // Display captures
+        if (analysis.capture_moves && analysis.capture_moves.length > 0) {
+          displayCaptures(analysis.capture_moves)
+        }
+
+        // Update evaluation
+        updateEvaluation(analysis.position_evaluation)
+      }
+
+      // Show captures only
+      async function showCapturesOnly() {
+        currentEngine = document.getElementById('engineType').value
+
+        try {
+          const response = await fetch(
+            `${API_URL}/get_capture_moves?game_id=${GAME_ID}&engine=${currentEngine}`
+          )
+
+          const data = await response.json()
+
+          if (data.capture_moves) {
+            displayCaptures(data.capture_moves)
+          }
+        } catch (error) {
+          console.error('Error getting captures:', error)
+        }
+      }
+
+      // Display captures
+      function displayCaptures(captures) {
+        const container = document.getElementById('captureMoves')
+
+        if (captures.length === 0) {
+          container.innerHTML = 'No captures available'
+          return
+        }
+
+        container.innerHTML = '<div class="captures-section"></div>'
+        const section = container.querySelector('.captures-section')
+
+        captures.forEach((move) => {
+          const captureItem = document.createElement('div')
+          captureItem.className = 'capture-item'
+
+          const evalText = move.is_mate
+            ? `M${Math.abs(move.mate_in)}`
+            : `${(move.evaluation / 100).toFixed(1)}`
+
+          captureItem.innerHTML = `
+                    <strong>${move.move}</strong><br>
+                    ${move.piece}: ${move.from_square}→${move.to_square}<br>
+                    Eval: ${evalText}
+                `
+
+          section.appendChild(captureItem)
+        })
+      }
+
+      // Compare engines
+      async function compareEngines() {
+        if (
+          !confirm('This will analyze the position with all engines. Continue?')
+        ) {
+          return
+        }
+
+        document.getElementById('analysisLoading').classList.add('active')
+
+        try {
+          const response = await fetch(`${API_URL}/compare_engines`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ game_id: GAME_ID }),
+          })
+
+          const data = await response.json()
+
+          let comparisonHTML = '<h4>Engine Comparison:</h4>'
+
+          for (const [engine, analysis] of Object.entries(data)) {
+            comparisonHTML += `
+                        <div class="move-card">
+                            <strong>${engine.toUpperCase()}</strong><br>
+                            Best: ${analysis.best_move} 
+                            (${(analysis.evaluation / 100).toFixed(2)})<br>
+                            <small>Top 3: ${analysis.top_3
+                              .map((m) => m.move)
+                              .join(', ')}</small>
+                        </div>
+                    `
+          }
+
+          document.getElementById('topMoves').innerHTML = comparisonHTML
+        } catch (error) {
+          console.error('Error comparing engines:', error)
+        } finally {
+          document.getElementById('analysisLoading').classList.remove('active')
+        }
+      }
+
+      // Add move to history
+      function addMoveToHistory(move, player) {
+        const history = document.getElementById('moveHistory')
+        const moveItem = document.createElement('div')
+        moveItem.className = 'move-item'
+
+        const moveNumber = Math.floor(game.history().length / 2) + 1
+        moveItem.textContent = `${moveNumber}. ${player}: ${move}`
+
+        history.appendChild(moveItem)
+        history.scrollTop = history.scrollHeight
+      }
+
+      // Update status
+      function updateStatus() {
+        const turn = game.turn() === 'w' ? 'White' : 'Black'
+        const status = document.getElementById('turnStatus')
+
+        if (game.in_checkmate()) {
+          status.textContent =
+            'Checkmate! ' + (turn === 'White' ? 'Black' : 'White') + ' wins!'
+        } else if (game.in_draw()) {
+          status.textContent = 'Draw!'
+        } else if (game.in_stalemate()) {
+          status.textContent = 'Stalemate!'
+        } else {
+          status.textContent = turn + ' to move'
+          if (game.in_check()) {
+            status.textContent += ' (in check)'
+          }
+        }
+      }
+
+      // Update evaluation
+      function updateEvaluation(eval) {
+        const evalStatus = document.getElementById('evalStatus')
+        const evalValue = eval / 100
+
+        if (Math.abs(evalValue) < 0.5) {
+          evalStatus.textContent = 'Position: Equal'
+        } else if (evalValue > 0) {
+          evalStatus.textContent = `Position: White is better (+${evalValue.toFixed(
+            2
+          )})`
+        } else {
+          evalStatus.textContent = `Position: Black is better (${evalValue.toFixed(
+            2
+          )})`
+        }
+      }
+
+      // Initialize on load
+      window.onload = function () {
+        initBoard()
+        updateStatus()
+      }
+    </script>
+  </body>
+</html>
