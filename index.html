@@ -684,9 +684,17 @@
         const result = game.move(moveObj)
 
         if (result) {
-          lastMove = { from: from, to: to }
+          // Update board position first
           board.position(game.fen())
-          highlightLastMove()
+
+          // Then update lastMove
+          lastMove = { from: from, to: to }
+
+          // Use setTimeout to ensure DOM is updated before highlighting
+          setTimeout(() => {
+            highlightLastMove()
+          }, 50)
+
           addMoveToHistory(moveUci, 'AI')
           updateStatus()
           saveGameState()
@@ -904,7 +912,11 @@
 
         // Save last move for highlighting
         lastMove = { from: source, to: target }
-        highlightLastMove()
+
+        // Highlight immediately after player's move
+        setTimeout(() => {
+          highlightLastMove()
+        }, 50)
 
         // Evaluate position after player move
         setTimeout(() => evaluatePosition(), 100)
@@ -1028,6 +1040,13 @@
 
               if (result) {
                 board.position(game.fen())
+
+                // Update lastMove and highlight for AI's opening move
+                lastMove = { from: from, to: to }
+                setTimeout(() => {
+                  highlightLastMove()
+                }, 50)
+
                 addMoveToHistory(data.ai_move, 'AI')
                 updateStatus()
 
@@ -1097,6 +1116,13 @@
                 if (result) {
                   // Update the board visually
                   board.position(game.fen())
+
+                  // Update lastMove and highlight for AI's move
+                  lastMove = { from: from, to: to }
+                  setTimeout(() => {
+                    highlightLastMove()
+                  }, 50)
+
                   addMoveToHistory(data.ai_move, 'AI')
                   updateStatus()
 
