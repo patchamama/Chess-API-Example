@@ -1,14 +1,58 @@
 # Advanced Chess Game - Installation and Usage Guide
 
-## Project Files
+## Configuration
+
+### Backend URL Configuration
+
+The frontend can be configured to connect to different backend servers using a `config.json` file.
+
+#### Option 1: Using config.json (Recommended)
+
+1. Copy the example configuration:
+
+```bash
+cp config.json.example config.json
+```
+
+2. Edit `config.json` to set your backend URL:
+
+```json
+{
+  "backend_url": "http://127.0.0.1:5000"
+}
+```
+
+3. Examples of different configurations:
+
+```json
+# Local development (default)
+{"backend_url": "http://127.0.0.1:5000"}
+
+# Alternative local
+{"backend_url": "http://localhost:5000"}
+
+# Local network
+{"backend_url": "http://192.168.1.100:5000"}
+
+# Production server
+{"backend_url": "https://your-domain.com/api"}
+```
+
+#### Option 2: No configuration file (Default)
+
+If no `config.json` file is found, the application will automatically use:
 
 ```
-/mnt/user-data/outputs/
-├── advanced_chess.html              # Updated frontend
-├── chess_backend_refactored.py      # Refactored backend (USE THIS ONE)
-├── REFACTORING_DOCUMENTATION.md     # Complete refactoring documentation
-└── CHANGES.md                       # Evaluation bar fixes
+http://127.0.0.1:5000
 ```
+
+#### Changing the Backend URL
+
+You can change where the frontend connects to the backend in three ways:
+
+1. Edit `config.json` (preferred)
+2. Delete `config.json` to use the default (127.0.0.1:5000)
+3. Directly edit the `API_URL` variable in `advanced_chess.html` (not recommended)
 
 ## Installation
 
@@ -203,9 +247,29 @@ SOLVED - The refactored backend automatically synchronizes with FEN
 # Verify that port 5000 is free
 netstat -an | grep 5000
 
-# If it's occupied, change the port in:
-# 1. chess_backend_refactored.py: app.run(debug=True, port=5001)
-# 2. advanced_chess.html: const API_URL = 'http://localhost:5001'
+# If port 5000 is occupied, you can change it:
+```
+
+**Option 1: Change backend port and update config.json**
+
+```bash
+# 1. In chess_backend_refactored.py, change the port:
+app.run(debug=True, port=5001)
+
+# 2. Update your config.json:
+{
+  "backend_url": "http://127.0.0.1:5001"
+}
+```
+
+**Option 2: Free up port 5000**
+
+```bash
+# Find what's using port 5000
+lsof -i :5000
+
+# Stop the process
+kill -9 [PID]
 ```
 
 ### CORS Errors

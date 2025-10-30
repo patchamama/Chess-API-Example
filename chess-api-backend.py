@@ -10,17 +10,17 @@ from dataclasses import dataclass, asdict
 app = Flask(__name__)
 CORS(app)
 
-# Configuración de Stockfish
-STOCKFISH_PATH = "stockfish"  # Ajustar según sistema operativo
+# Stockfish configuration
+STOCKFISH_PATH = "stockfish"  # Adjust according to operating system
 # STOCKFISH_PATH = "C:\\Path\\To\\stockfish.exe"  # Windows
 
-# Almacenamiento de partidas
+# Game storage
 games = {}
 
 @dataclass
 class MoveEvaluation:
     move: str
-    evaluation: float  # En centipawns o mate
+    evaluation: float  # In centipawns or mate
     is_mate: bool
     mate_in: Optional[int]
     is_capture: bool
@@ -40,7 +40,7 @@ class EngineAnalysis:
 def get_or_create_game(game_id: str, fen: Optional[str] = None, 
                        player_color: str = 'white', 
                        engine_strength: int = 20) -> Dict:
-    """Obtiene un juego existente o crea uno nuevo desde un FEN"""
+    """Gets an existing game or creates a new one from a FEN"""
     if game_id not in games:
         board = chess.Board() if not fen else chess.Board(fen)
         games[game_id] = {
@@ -52,7 +52,7 @@ def get_or_create_game(game_id: str, fen: Optional[str] = None,
         }
         print(f"📝 New game created: {game_id} (FEN: {board.fen()[:50]}...)")
     elif fen:
-        # Si se proporciona FEN, actualizar la posición
+        # If FEN is provided, update the position
         games[game_id]['board'] = chess.Board(fen)
         print(f"🔄 Game {game_id} updated with new FEN")
     
@@ -60,13 +60,13 @@ def get_or_create_game(game_id: str, fen: Optional[str] = None,
 
 @app.route('/new_game', methods=['POST'])
 def new_game():
-    """Inicia una nueva partida"""
+    """Starts a new game"""
     data = request.json
     game_id = data.get('game_id', 'default')
     player_color = data.get('color', 'white')
-    engine_strength = data.get('engine_strength', 20)  # 1-20, 20 = máximo
+    engine_strength = data.get('engine_strength', 20)  # 1-20, 20 = maximum
     engine_type = data.get('engine', 'stockfish')  # stockfish, lichess, chesscom
-    fen = data.get('fen')  # FEN opcional
+    fen = data.get('fen')  # Optional FEN
     
     game_data = get_or_create_game(game_id, fen, player_color, engine_strength)
     game_data['current_engine'] = engine_type
@@ -79,7 +79,7 @@ def new_game():
         'engine': engine_type
     }
     
-    # Si el jugador eligió negras, el motor hace el primer movimiento
+    # If the player chose black, the engine makes the first move
     if player_color == 'black':
         analysis = get_engine_move(game_id, engine_type)
         if analysis:
@@ -95,15 +95,15 @@ def new_game():
 
 @app.route('/make_move', methods=['POST'])
 def make_move():
-    """Procesa el movimiento del jugador y responde con el motor seleccionado"""
+    """Processes the player's move and responds with the selected engine"""
     data = request.json
     game_id = data.get('game_id', 'default')
     move_uci = data.get('move')
-    fen = data.get('fen')  # FEN opcional para sincronización
-    engine_type = data.get('engine', 'stockfish')  # Motor a usar
+    fen = data.get('fen')  # Optional FEN for synchronization
+    engine_type = data.get('engine', 'stockfish')  # Engine to use
     engine_strength = data.get('engine_strength', 20)
     
-    # Obtener o crear juego desde FEN
+    # Get or create game from FEN
     game_data = get_or_create_game(game_id, fen, engine_strength=engine_strength)
     game_data['current_engine'] = engine_type
     board = game_data['board']
@@ -124,11 +124,11 @@ def make_move():
             }
             
             if not board.is_game_over():
-                # Usar el motor especificado
+                # Use the specified engine
                 analysis = get_engine_move(game_id, engine_type)
                 
                 if analysis:
-                    # Motor hace su movimiento
+                    # Engine makes its move
                     ai_move = chess.Move.from_uci(analysis.best_move)
                     board.push(ai_move)
                     game_data['moves'].append(analysis.best_move)
@@ -142,13 +142,13 @@ def make_move():
             
             return jsonify(response)
         else:
-            return jsonify({'error': 'Movimiento ilegal', 'fen': board.fen()}), 400
+            return jsonify({'error': 'Illegal move', 'fen': board.fen()}), 400
             
     except Exception as e:
         return jsonify({'error': str(e), 'fen': board.fen() if game_id in games else None}), 400
 
 def get_engine_move(game_id: str, engine_type: str) -> Optional[EngineAnalysis]:
-    """Obtiene el movimiento del motor especificado"""
+    """Gets the move from the specified engine"""
     if engine_type == 'stockfish':
         return analyze_position_stockfish(game_id, top_n=5)
     elif engine_type == 'lichess':
@@ -161,7 +161,7 @@ def get_engine_move(game_id: str, engine_type: str) -> Optional[EngineAnalysis]:
 
 @app.route('/sync_position', methods=['POST'])
 def sync_position():
-    """Sincroniza la posición del tablero con el backend (útil después de recargar)"""
+    """Synchronizes the board position with the backend (useful after reload)"""
     data = request.json
     game_id = data.get('game_id', 'default')
     fen = data.get('fen')
@@ -169,7 +169,7 @@ def sync_position():
     engine_strength = data.get('engine_strength', 20)
     
     if not fen:
-        return jsonify({'error': 'FEN requerido'}), 400
+        return jsonify({'error': 'FEN required'}), 400
     
     game_data = get_or_create_game(game_id, fen, player_color, engine_strength)
     
@@ -183,20 +183,20 @@ def sync_position():
 
 @app.route('/analyze_position', methods=['POST'])
 def analyze_position():
-    """Analiza la posición actual con el motor elegido"""
+    """Analyzes the current position with the chosen engine"""
     data = request.json
     game_id = data.get('game_id', 'default')
     engine_type = data.get('engine', 'stockfish')  # stockfish, lichess, chesscom
     top_n = data.get('top_moves', 5)
     depth = data.get('depth', 20)
-    fen = data.get('fen')  # FEN opcional
+    fen = data.get('fen')  # Optional FEN
     
-    # Sincronizar posición si se proporciona FEN
+    # Synchronize position if FEN is provided
     if fen:
         get_or_create_game(game_id, fen)
     
     if game_id not in games:
-        return jsonify({'error': 'Partida no encontrada y no se proporcionó FEN'}), 404
+        return jsonify({'error': 'Game not found and no FEN provided'}), 404
     
     if engine_type == 'stockfish':
         analysis = analyze_position_stockfish(game_id, top_n, depth)
@@ -205,15 +205,15 @@ def analyze_position():
     elif engine_type == 'chesscom':
         analysis = analyze_position_chesscom(game_id)
     else:
-        return jsonify({'error': 'Motor no válido'}), 400
+        return jsonify({'error': 'Invalid engine'}), 400
     
     if analysis:
         return jsonify(asdict(analysis))
     else:
-        return jsonify({'error': 'Error en el análisis'}), 500
+        return jsonify({'error': 'Analysis error'}), 500
 
 def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) -> Optional[EngineAnalysis]:
-    """Analiza posición con Stockfish local - análisis completo"""
+    """Analyzes position with local Stockfish - complete analysis"""
     if game_id not in games:
         return None
     
@@ -222,10 +222,10 @@ def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) ->
     
     try:
         with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as engine:
-            # Configurar fuerza del motor (Skill Level 0-20)
+            # Configure engine strength (Skill Level 0-20)
             engine.configure({"Skill Level": engine_strength})
             
-            # Análisis multi-PV para obtener top N movimientos
+            # Multi-PV analysis to get top N moves
             info = engine.analyse(
                 board, 
                 chess.engine.Limit(depth=depth),
@@ -259,7 +259,7 @@ def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) ->
                     to_square=chess.square_name(move.to_square)
                 ))
             
-            # Analizar TODOS los movimientos legales
+            # Analyze ALL legal moves
             all_moves = []
             for move in board.legal_moves:
                 board.push(move)
@@ -276,7 +276,7 @@ def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) ->
                     mate_in = score.mate()
                     eval_score = 10000 if mate_in > 0 else -10000
                 else:
-                    eval_score = -score.score()  # Invertir porque es relativo al oponente
+                    eval_score = -score.score()  # Invert because it's relative to opponent
                 
                 all_moves.append(MoveEvaluation(
                     move=move.uci(),
@@ -289,14 +289,14 @@ def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) ->
                     to_square=chess.square_name(move.to_square)
                 ))
             
-            # Filtrar movimientos de captura
+            # Filter capture moves
             capture_moves = [m for m in all_moves if m.is_capture]
             
-            # Ordenar todos los movimientos por evaluación
+            # Sort all moves by evaluation
             all_moves.sort(key=lambda x: x.evaluation, reverse=True)
             capture_moves.sort(key=lambda x: x.evaluation, reverse=True)
             
-            # Evaluación de la posición (SIEMPRE desde perspectiva de blancas)
+            # Position evaluation (ALWAYS from white's perspective)
             main_eval = engine.analyse(board, chess.engine.Limit(depth=depth))
             position_eval = 0
             if main_eval['score'].relative.is_mate():
@@ -305,7 +305,7 @@ def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) ->
             else:
                 position_eval = main_eval['score'].relative.score()
             
-            # Si es turno de negras, invertir la evaluación para que sea desde perspectiva de blancas
+            # If it's black's turn, invert the evaluation to be from white's perspective
             if board.turn == chess.BLACK:
                 position_eval = -position_eval
             
@@ -319,11 +319,11 @@ def analyze_position_stockfish(game_id: str, top_n: int = 5, depth: int = 20) ->
             )
             
     except Exception as e:
-        print(f"Error con Stockfish: {e}")
+        print(f"Error with Stockfish: {e}")
         return None
 
 def analyze_position_lichess(game_id: str, top_n: int = 5) -> Optional[EngineAnalysis]:
-    """Analiza posición usando Lichess Cloud Evaluation API"""
+    """Analyzes position using Lichess Cloud Evaluation API"""
     if game_id not in games:
         return None
     
@@ -376,12 +376,12 @@ def analyze_position_lichess(game_id: str, top_n: int = 5) -> Optional[EngineAna
                     to_square=chess.square_name(move.to_square)
                 ))
             
-            # Para Lichess, generamos todos los movimientos legales sin evaluación profunda
+            # For Lichess, we generate all legal moves without deep evaluation
             all_moves = []
             for move in board.legal_moves:
                 all_moves.append(MoveEvaluation(
                     move=move.uci(),
-                    evaluation=0,  # Lichess no evalúa todos los movimientos
+                    evaluation=0,  # Lichess doesn't evaluate all moves
                     is_mate=False,
                     mate_in=None,
                     is_capture=board.is_capture(move),
@@ -406,21 +406,21 @@ def analyze_position_lichess(game_id: str, top_n: int = 5) -> Optional[EngineAna
         return None
         
     except Exception as e:
-        print(f"Error con Lichess: {e}")
+        print(f"Error with Lichess: {e}")
         return None
 
 def analyze_position_chesscom(game_id: str) -> Optional[EngineAnalysis]:
-    """Analiza posición usando Chess.com - implementación básica con Stockfish"""
+    """Analyzes position using Chess.com - basic implementation with Stockfish"""
     if game_id not in games:
         return None
     
     board = games[game_id]['board']
     
-    # Chess.com no tiene API pública de análisis directo
-    # Usar Stockfish como fallback pero con configuración diferente
+    # Chess.com doesn't have a public direct analysis API
+    # Use Stockfish as fallback but with different configuration
     try:
         with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as engine:
-            # Análisis rápido
+            # Quick analysis
             info = engine.analyse(board, chess.engine.Limit(depth=15), multipv=3)
             
             top_moves = []
@@ -465,7 +465,7 @@ def analyze_position_chesscom(game_id: str) -> Optional[EngineAnalysis]:
             
             capture_moves = [m for m in all_moves if m.is_capture]
             
-            # Evaluación de posición (SIEMPRE desde perspectiva de blancas)
+            # Position evaluation (ALWAYS from white's perspective)
             main_eval = engine.analyse(board, chess.engine.Limit(depth=15))
             position_eval = 0
             if main_eval['score'].relative.is_mate():
@@ -474,7 +474,7 @@ def analyze_position_chesscom(game_id: str) -> Optional[EngineAnalysis]:
             else:
                 position_eval = main_eval['score'].relative.score()
             
-            # Si es turno de negras, invertir para perspectiva de blancas
+            # If it's black's turn, invert for white's perspective
             if board.turn == chess.BLACK:
                 position_eval = -position_eval
             
@@ -488,48 +488,48 @@ def analyze_position_chesscom(game_id: str) -> Optional[EngineAnalysis]:
             )
         
     except Exception as e:
-        print(f"Error con Chess.com fallback: {e}")
+        print(f"Error with Chess.com fallback: {e}")
         return None
 
 @app.route('/set_engine_strength', methods=['POST'])
 def set_engine_strength():
-    """Cambia la fuerza del motor (1-20)"""
+    """Changes the engine strength (1-20)"""
     data = request.json
     game_id = data.get('game_id', 'default')
     strength = data.get('strength', 20)
-    fen = data.get('fen')  # FEN opcional
+    fen = data.get('fen')  # Optional FEN
     
-    # Sincronizar si se proporciona FEN
+    # Synchronize if FEN is provided
     if fen:
         get_or_create_game(game_id, fen)
     
     if game_id not in games:
-        return jsonify({'error': 'Partida no encontrada'}), 404
+        return jsonify({'error': 'Game not found'}), 404
     
     if not 1 <= strength <= 20:
-        return jsonify({'error': 'Fuerza debe estar entre 1 y 20'}), 400
+        return jsonify({'error': 'Strength must be between 1 and 20'}), 400
     
     games[game_id]['engine_strength'] = strength
     
     return jsonify({
         'success': True,
         'engine_strength': strength,
-        'message': f'Fuerza del motor ajustada a {strength}/20'
+        'message': f'Engine strength set to {strength}/20'
     })
 
 @app.route('/get_capture_moves', methods=['GET'])
 def get_capture_moves():
-    """Devuelve solo los movimientos de captura con evaluación"""
+    """Returns only capture moves with evaluation"""
     game_id = request.args.get('game_id', 'default')
     engine = request.args.get('engine', 'stockfish')
-    fen = request.args.get('fen')  # FEN opcional
+    fen = request.args.get('fen')  # Optional FEN
     
-    # Sincronizar si se proporciona FEN
+    # Synchronize if FEN is provided
     if fen:
         get_or_create_game(game_id, fen)
     
     if game_id not in games:
-        return jsonify({'error': 'Partida no encontrada'}), 404
+        return jsonify({'error': 'Game not found'}), 404
     
     if engine == 'stockfish':
         analysis = analyze_position_stockfish(game_id, top_n=5)
@@ -544,21 +544,21 @@ def get_capture_moves():
             'total_captures': len(analysis.capture_moves)
         })
     
-    return jsonify({'error': 'Error en el análisis'}), 500
+    return jsonify({'error': 'Analysis error'}), 500
 
 @app.route('/legal_moves', methods=['GET'])
 def legal_moves():
-    """Devuelve los movimientos legales para una casilla con evaluación"""
+    """Returns legal moves for a square with evaluation"""
     game_id = request.args.get('game_id', 'default')
     square = request.args.get('square')
-    fen = request.args.get('fen')  # FEN opcional
+    fen = request.args.get('fen')  # Optional FEN
     
-    # Sincronizar si se proporciona FEN
+    # Synchronize if FEN is provided
     if fen:
         get_or_create_game(game_id, fen)
     
     if game_id not in games:
-        return jsonify({'error': 'Partida no encontrada'}), 404
+        return jsonify({'error': 'Game not found'}), 404
     
     board = games[game_id]['board']
     legal = []
@@ -577,17 +577,17 @@ def legal_moves():
 
 @app.route('/compare_engines', methods=['POST'])
 def compare_engines():
-    """Compara el mejor movimiento de diferentes motores"""
+    """Compares the best move from different engines"""
     data = request.json
     game_id = data.get('game_id', 'default')
-    fen = data.get('fen')  # FEN opcional
+    fen = data.get('fen')  # Optional FEN
     
-    # Sincronizar si se proporciona FEN
+    # Synchronize if FEN is provided
     if fen:
         get_or_create_game(game_id, fen)
     
     if game_id not in games:
-        return jsonify({'error': 'Partida no encontrada'}), 404
+        return jsonify({'error': 'Game not found'}), 404
     
     results = {}
     
@@ -613,23 +613,23 @@ def compare_engines():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("♟️  SERVIDOR DE AJEDREZ AVANZADO (REFACTORIZADO)")
+    print("♟️  ADVANCED CHESS SERVER (REFACTORED)")
     print("=" * 60)
     print("📍 URL: http://localhost:5000")
-    print("\n📊 Características:")
-    print("  ✓ Soporte para FEN en todos los endpoints")
-    print("  ✓ Sincronización automática de posiciones")
-    print("  ✓ Multi-motor en make_move (Stockfish, Lichess, Chess.com)")
-    print("  ✓ Análisis de TODOS los movimientos legales")
-    print("  ✓ Nivel de fuerza configurable (1-20)")
+    print("\n📊 Features:")
+    print("  ✓ FEN support in all endpoints")
+    print("  ✓ Automatic position synchronization")
+    print("  ✓ Multi-engine in make_move (Stockfish, Lichess, Chess.com)")
+    print("  ✓ Analysis of ALL legal moves")
+    print("  ✓ Configurable strength level (1-20)")
     print("\n🔌 Endpoints:")
-    print("  POST /new_game - Nueva partida (soporta FEN)")
-    print("  POST /make_move - Movimiento con motor seleccionado")
-    print("  POST /sync_position - Sincronizar posición con FEN")
-    print("  POST /analyze_position - Análisis completo (soporta FEN)")
-    print("  POST /set_engine_strength - Ajustar fuerza (soporta FEN)")
-    print("  GET  /get_capture_moves - Solo capturas (soporta FEN)")
-    print("  GET  /legal_moves - Movimientos legales (soporta FEN)")
-    print("  POST /compare_engines - Comparar motores (soporta FEN)")
+    print("  POST /new_game - New game (supports FEN)")
+    print("  POST /make_move - Move with selected engine")
+    print("  POST /sync_position - Synchronize position with FEN")
+    print("  POST /analyze_position - Complete analysis (supports FEN)")
+    print("  POST /set_engine_strength - Adjust strength (supports FEN)")
+    print("  GET  /get_capture_moves - Captures only (supports FEN)")
+    print("  GET  /legal_moves - Legal moves (supports FEN)")
+    print("  POST /compare_engines - Compare engines (supports FEN)")
     print("=" * 60)
     app.run(debug=True, port=5000)

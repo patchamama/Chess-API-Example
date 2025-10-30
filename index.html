@@ -668,8 +668,28 @@
     </script>
 
     <script>
-      // Configuration
-      const API_URL = 'http://127.0.0.1:5000'
+      // Configuration - Load from config.js or use default
+      let API_URL = 'http://127.0.0.1:5000' // Default fallback
+
+      // Try to load configuration from external file
+      ;(async function loadConfig() {
+        try {
+          const response = await fetch('config.json')
+          if (response.ok) {
+            const config = await response.json()
+            if (config.backend_url) {
+              API_URL = config.backend_url
+              console.log('Loaded backend URL from config.json:', API_URL)
+            }
+          }
+        } catch (error) {
+          console.log(
+            'No config.json found, using default backend URL:',
+            API_URL
+          )
+        }
+      })()
+
       const GAME_ID = 'web-game-' + Date.now()
 
       // Game state
@@ -725,25 +745,34 @@
                 const match = line.match(/score cp (-?\d+)/)
                 if (match) {
                   let centipawns = parseInt(match[1])
+                  const currentTurn = game.turn() // 'w' or 'b'
 
                   // Stockfish returns evaluation from perspective of side to move
                   // We need to convert to always be from White's perspective
-                  if (game.turn() === 'b') {
-                    centipawns = -centipawns // Invert for black's turn
+                  // If it's black's turn, invert the score
+                  if (currentTurn === 'b') {
+                    centipawns = -centipawns
                   }
 
+                  console.log(
+                    `Eval: raw=${match[1]}, turn=${currentTurn}, converted=${centipawns}`
+                  )
                   updateEvaluationBar(centipawns / 100)
                 }
               } else if (line.includes('score mate')) {
                 const match = line.match(/score mate (-?\d+)/)
                 if (match) {
                   let mateIn = parseInt(match[1])
+                  const currentTurn = game.turn()
 
                   // Invert mate score for black's turn
-                  if (game.turn() === 'b') {
+                  if (currentTurn === 'b') {
                     mateIn = -mateIn
                   }
 
+                  console.log(
+                    `Mate: raw=${match[1]}, turn=${currentTurn}, converted=${mateIn}`
+                  )
                   updateEvaluationBar(mateIn > 0 ? 100 : -100, true, mateIn)
                 }
               }
@@ -840,24 +869,32 @@
               const match = line.match(/score cp (-?\d+)/)
               if (match) {
                 let centipawns = parseInt(match[1])
+                const currentTurn = game.turn()
 
                 // Convert to White's perspective
-                if (game.turn() === 'b') {
+                if (currentTurn === 'b') {
                   centipawns = -centipawns
                 }
 
+                console.log(
+                  `Eval (alt): raw=${match[1]}, turn=${currentTurn}, converted=${centipawns}`
+                )
                 updateEvaluationBar(centipawns / 100)
               }
             } else if (line.includes('score mate')) {
               const match = line.match(/score mate (-?\d+)/)
               if (match) {
                 let mateIn = parseInt(match[1])
+                const currentTurn = game.turn()
 
                 // Invert mate score for black's turn
-                if (game.turn() === 'b') {
+                if (currentTurn === 'b') {
                   mateIn = -mateIn
                 }
 
+                console.log(
+                  `Mate (alt): raw=${match[1]}, turn=${currentTurn}, converted=${mateIn}`
+                )
                 updateEvaluationBar(mateIn > 0 ? 100 : -100, true, mateIn)
               }
             }
@@ -1133,6 +1170,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               game_id: GAME_ID,
+              fen: game.fen(), // Enviar FEN actual
               engine:
                 currentEngine === 'stockfish-backend'
                   ? 'stockfish'
@@ -1143,6 +1181,15 @@
           })
 
           const data = await response.json()
+
+          if (data.error) {
+            console.error('Backend error:', data.error)
+            console.warn(
+              '⚠️ Could not get engine move after reload:',
+              data.error
+            )
+            return
+          }
 
           if (data.best_move) {
             console.log('✅ Backend suggested move:', data.best_move)
@@ -1299,6 +1346,9 @@
 
       // Drop handler
       function onDrop(source, target) {
+        // Save FEN BEFORE the move
+        const fenBeforeMove = game.fen()
+
         // Check if move is legal
         const move = game.move({
           from: source,
@@ -1333,7 +1383,8 @@
             getStockfishJSMove()
           }, 500)
         } else {
-          makeMove(move.from + move.to)
+          // Send FEN BEFORE the player's move
+          makeMove(move.from + move.to, fenBeforeMove)
         }
       }
 
@@ -1630,6 +1681,10 @@
               game_id: GAME_ID,
               color: playerColor,
               engine_strength: engineStrength,
+              engine:
+                currentEngine === 'stockfish-backend'
+                  ? 'stockfish'
+                  : currentEngine, // Enviar motor
             }),
           })
 
@@ -1690,7 +1745,10 @@
       }
 
       // Make move
-      async function makeMove(moveUci) {
+      async function makeMove(moveUci, fenBeforeMove) {
+        // Use provided FEN or current FEN
+        const fenToSend = fenBeforeMove || game.fen()
+
         try {
           const response = await fetch(`${API_URL}/make_move`, {
             method: 'POST',
@@ -1698,6 +1756,12 @@
             body: JSON.stringify({
               game_id: GAME_ID,
               move: moveUci,
+              fen: fenToSend, // Send FEN BEFORE player's move
+              engine:
+                currentEngine === 'stockfish-backend'
+                  ? 'stockfish'
+                  : currentEngine,
+              engine_strength: engineStrength,
             }),
           })
 
@@ -1748,8 +1812,10 @@
                 } else {
                   console.error('Failed to make AI move:', data.ai_move)
                   // Fallback: sync with server FEN
-                  game.load(data.fen)
-                  board.position(data.fen)
+                  if (data.fen) {
+                    game.load(data.fen)
+                    board.position(data.fen)
+                  }
                 }
               }, 500)
             }
@@ -1765,9 +1831,28 @@
                 }
               }, 600)
             }
+          } else if (data.error) {
+            console.error('Backend error:', data.error)
+            alert(`Error: ${data.error}`)
+
+            // Revert the move locally if backend rejected it
+            game.undo()
+            board.position(game.fen())
           }
         } catch (error) {
           console.error('Error making move:', error)
+          alert(
+            'Failed to communicate with backend. Using Stockfish.js as fallback.'
+          )
+
+          // Revert move
+          game.undo()
+          board.position(game.fen())
+
+          // Fallback to Stockfish.js
+          if (stockfishEngineGame) {
+            getStockfishJSMove()
+          }
         }
       }
 
@@ -1794,6 +1879,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               game_id: GAME_ID,
+              fen: game.fen(), // Enviar FEN actual
               engine:
                 currentEngine === 'stockfish-backend'
                   ? 'stockfish'
@@ -1804,9 +1890,18 @@
           })
 
           const data = await response.json()
-          displayAnalysis(data)
+
+          if (data.error) {
+            console.error('Analysis error:', data.error)
+            alert(`Analysis error: ${data.error}`)
+          } else {
+            displayAnalysis(data)
+          }
         } catch (error) {
           console.error('Error analyzing position:', error)
+          alert(
+            'Failed to analyze position. Please check if the backend is running.'
+          )
         } finally {
           document.getElementById('analysisLoading').classList.remove('active')
         }
@@ -1886,17 +1981,28 @@
         currentEngine = document.getElementById('engineType').value
 
         try {
+          // Encode FEN for URL
+          const encodedFen = encodeURIComponent(game.fen())
+          const engineParam =
+            currentEngine === 'stockfish-backend' ? 'stockfish' : currentEngine
+
           const response = await fetch(
-            `${API_URL}/get_capture_moves?game_id=${GAME_ID}&engine=${currentEngine}`
+            `${API_URL}/get_capture_moves?game_id=${GAME_ID}&engine=${engineParam}&fen=${encodedFen}`
           )
 
           const data = await response.json()
 
-          if (data.capture_moves) {
+          if (data.error) {
+            console.error('Captures error:', data.error)
+            alert(`Error: ${data.error}`)
+          } else if (data.capture_moves) {
             displayCaptures(data.capture_moves)
           }
         } catch (error) {
           console.error('Error getting captures:', error)
+          alert(
+            'Failed to get capture moves. Please check if the backend is running.'
+          )
         }
       }
 
@@ -1944,29 +2050,40 @@
           const response = await fetch(`${API_URL}/compare_engines`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ game_id: GAME_ID }),
+            body: JSON.stringify({
+              game_id: GAME_ID,
+              fen: game.fen(), // Enviar FEN actual
+            }),
           })
 
           const data = await response.json()
 
-          let comparisonHTML = '<h4>Engine Comparison:</h4>'
+          if (data.error) {
+            console.error('Comparison error:', data.error)
+            alert(`Error: ${data.error}`)
+          } else {
+            let comparisonHTML = '<h4>Engine Comparison:</h4>'
 
-          for (const [engine, analysis] of Object.entries(data)) {
-            comparisonHTML += `
-                        <div class="move-card">
-                            <strong>${engine.toUpperCase()}</strong><br>
-                            Best: ${analysis.best_move} 
-                            (${(analysis.evaluation / 100).toFixed(2)})<br>
-                            <small>Top 3: ${analysis.top_3
-                              .map((m) => m.move)
-                              .join(', ')}</small>
-                        </div>
-                    `
+            for (const [engine, analysis] of Object.entries(data)) {
+              comparisonHTML += `
+                          <div class="move-card">
+                              <strong>${engine.toUpperCase()}</strong><br>
+                              Best: ${analysis.best_move} 
+                              (${(analysis.evaluation / 100).toFixed(2)})<br>
+                              <small>Top 3: ${analysis.top_3
+                                .map((m) => m.move)
+                                .join(', ')}</small>
+                          </div>
+                      `
+            }
+
+            document.getElementById('topMoves').innerHTML = comparisonHTML
           }
-
-          document.getElementById('topMoves').innerHTML = comparisonHTML
         } catch (error) {
           console.error('Error comparing engines:', error)
+          alert(
+            'Failed to compare engines. Please check if the backend is running.'
+          )
         } finally {
           document.getElementById('analysisLoading').classList.remove('active')
         }
