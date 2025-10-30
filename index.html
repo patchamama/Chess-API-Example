@@ -586,12 +586,36 @@
 
           if (data.ai_move) {
             setTimeout(() => {
-              game.move(data.ai_move)
-              board.position(game.fen())
-              addMoveToHistory(data.ai_move, 'AI')
-              updateStatus()
-              if (data.analysis) {
-                displayAnalysis(data.analysis)
+              // Parse the AI move
+              const from = data.ai_move.substring(0, 2)
+              const to = data.ai_move.substring(2, 4)
+              const promotion =
+                data.ai_move.length > 4 ? data.ai_move.substring(4) : undefined
+
+              const moveObj = {
+                from: from,
+                to: to,
+              }
+
+              if (promotion) {
+                moveObj.promotion = promotion
+              }
+
+              const result = game.move(moveObj)
+
+              if (result) {
+                board.position(game.fen())
+                addMoveToHistory(data.ai_move, 'AI')
+                updateStatus()
+
+                if (data.analysis) {
+                  displayAnalysis(data.analysis)
+                }
+              } else {
+                console.error('Failed to make AI move:', data.ai_move)
+                // Fallback: sync with server FEN
+                game.load(data.fen)
+                board.position(data.fen)
               }
             }, 500)
           }
@@ -619,16 +643,44 @@
 
           if (data.success) {
             addMoveToHistory(data.player_move, 'You')
+            updateStatus()
 
             if (data.ai_move) {
               setTimeout(() => {
-                game.move(data.ai_move)
-                board.position(game.fen())
-                addMoveToHistory(data.ai_move, 'AI')
-                updateStatus()
+                // Parse the AI move (format: e2e4 or e7e8q for promotions)
+                const from = data.ai_move.substring(0, 2)
+                const to = data.ai_move.substring(2, 4)
+                const promotion =
+                  data.ai_move.length > 4
+                    ? data.ai_move.substring(4)
+                    : undefined
 
-                if (data.analysis) {
-                  displayAnalysis(data.analysis)
+                // Make the move in chess.js
+                const moveObj = {
+                  from: from,
+                  to: to,
+                }
+
+                if (promotion) {
+                  moveObj.promotion = promotion
+                }
+
+                const result = game.move(moveObj)
+
+                if (result) {
+                  // Update the board visually
+                  board.position(game.fen())
+                  addMoveToHistory(data.ai_move, 'AI')
+                  updateStatus()
+
+                  if (data.analysis) {
+                    displayAnalysis(data.analysis)
+                  }
+                } else {
+                  console.error('Failed to make AI move:', data.ai_move)
+                  // Fallback: sync with server FEN
+                  game.load(data.fen)
+                  board.position(data.fen)
                 }
               }, 500)
             }
@@ -644,8 +696,6 @@
                 }
               }, 600)
             }
-
-            updateStatus()
           }
         } catch (error) {
           console.error('Error making move:', error)
