@@ -442,10 +442,86 @@
           grid-template-columns: 1fr;
         }
 
+        .board-container {
+          justify-content: center;
+        }
+
+        .eval-bar-container {
+          height: 500px;
+        }
+
         #board {
+          width: 500px;
+          height: 500px;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .board-container {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .eval-bar-container {
+          width: 90%;
+          max-width: 400px;
+          height: 30px;
+          order: 2;
+        }
+
+        .eval-bar-white {
+          bottom: auto;
+          left: 0;
+          width: 50%;
+          height: 100%;
+        }
+
+        .eval-bar-black {
+          top: auto;
+          right: 0;
+          width: 50%;
+          height: 100%;
+        }
+
+        .eval-text.top {
+          left: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+        }
+
+        .eval-text.bottom {
+          right: 10px;
+          left: auto;
+          top: 50%;
+          transform: translateY(-50%);
+        }
+
+        .eval-text.center {
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+        }
+
+        #board {
+          width: 90%;
+          max-width: 400px;
+          height: auto;
+          aspect-ratio: 1;
+          order: 1;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .header h1 {
+          font-size: 1.8em;
+        }
+
+        .controls {
+          flex-direction: column;
+        }
+
+        .btn {
           width: 100%;
-          max-width: 600px;
-          margin: 0 auto;
         }
       }
     </style>
@@ -511,7 +587,7 @@
 
             <div class="setting">
               <label>Engine:</label>
-              <select id="engineType">
+              <select id="engineType" onchange="changeEngine()">
                 <option value="stockfish-backend" selected>
                   Stockfish (Backend)
                 </option>
@@ -584,7 +660,12 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js"></script>
+
+    <script>
+      // No pre-loading, we'll create Web Workers directly when needed
+      window.stockfishLoaded = true
+      window.stockfishLoadPromise = Promise.resolve()
+    </script>
 
     <script>
       // Configuration
@@ -604,70 +685,260 @@
       let lastMove = null // Track last move for highlighting
       let isWaitingForEngine = false
 
-      // Initialize Stockfish.js for local evaluation
-      function initStockfish() {
-        if (typeof STOCKFISH === 'function') {
+      // Initialize Stockfish.js for local evaluation using Blob approach
+      async function initStockfish() {
+        console.log('🚀 Initializing Stockfish using Blob Worker approach...')
+
+        try {
+          // Fetch the Stockfish script and create a Blob URL
+          const stockfishCDN =
+            'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js'
+
+          console.log('📥 Fetching Stockfish.js from CDN...')
+          const response = await fetch(stockfishCDN)
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch Stockfish: ${response.status}`)
+          }
+
+          const stockfishCode = await response.text()
+          console.log('✅ Stockfish.js downloaded successfully')
+
+          // Create a Blob from the code
+          const blob = new Blob([stockfishCode], {
+            type: 'application/javascript',
+          })
+          const blobURL = URL.createObjectURL(blob)
+
+          console.log('📦 Created Blob URL for Stockfish')
+
           // Evaluation engine
-          stockfishEngine = STOCKFISH()
+          console.log('Creating evaluation engine worker...')
+          stockfishEngine = new Worker(blobURL)
 
           stockfishEngine.onmessage = function (event) {
-            const line = event.data || event
+            const line = event.data
 
-            // Parse evaluation from Stockfish output
-            if (line.includes('score cp')) {
+            if (typeof line === 'string') {
+              // Parse evaluation from Stockfish output
+              if (line.includes('score cp')) {
+                const match = line.match(/score cp (-?\d+)/)
+                if (match) {
+                  let centipawns = parseInt(match[1])
+
+                  // Stockfish returns evaluation from perspective of side to move
+                  // We need to convert to always be from White's perspective
+                  if (game.turn() === 'b') {
+                    centipawns = -centipawns // Invert for black's turn
+                  }
+
+                  updateEvaluationBar(centipawns / 100)
+                }
+              } else if (line.includes('score mate')) {
+                const match = line.match(/score mate (-?\d+)/)
+                if (match) {
+                  let mateIn = parseInt(match[1])
+
+                  // Invert mate score for black's turn
+                  if (game.turn() === 'b') {
+                    mateIn = -mateIn
+                  }
+
+                  updateEvaluationBar(mateIn > 0 ? 100 : -100, true, mateIn)
+                }
+              }
+            }
+          }
+
+          stockfishEngine.onerror = function (error) {
+            console.error('Evaluation engine error:', error)
+          }
+
+          // Initialize UCI protocol
+          stockfishEngine.postMessage('uci')
+
+          // Game playing engine (separate worker)
+          console.log('Creating game engine worker...')
+          stockfishEngineGame = new Worker(blobURL)
+
+          stockfishEngineGame.onmessage = function (event) {
+            const line = event.data
+
+            if (typeof line === 'string') {
+              // Extract best move
+              if (line.includes('bestmove')) {
+                const match = line.match(
+                  /bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/
+                )
+                if (match && isWaitingForEngine) {
+                  isWaitingForEngine = false
+                  const moveUci = match[1]
+                  console.log('🎯 Engine suggests:', moveUci)
+                  executeStockfishJSMove(moveUci)
+                }
+              }
+            }
+          }
+
+          stockfishEngineGame.onerror = function (error) {
+            console.error('Game engine error:', error)
+            if (isWaitingForEngine) {
+              isWaitingForEngine = false
+              alert('Engine error. Please try again.')
+              updateStatus()
+            }
+          }
+
+          // Initialize UCI protocol
+          stockfishEngineGame.postMessage('uci')
+
+          // Wait a bit for UCI initialization
+          await new Promise((resolve) => setTimeout(resolve, 500))
+
+          console.log('✅ Stockfish Web Workers initialized successfully!')
+          return true
+        } catch (error) {
+          console.error('❌ Error creating Stockfish Web Workers:', error)
+          stockfishEngine = null
+          stockfishEngineGame = null
+
+          // Try alternative CDN
+          if (error.message && !error.message.includes('unpkg')) {
+            console.log('🔄 Trying alternative CDN...')
+            return await initStockfishAlternative()
+          }
+
+          return false
+        }
+      }
+
+      // Alternative initialization with different CDN
+      async function initStockfishAlternative() {
+        try {
+          const altCDN = 'https://unpkg.com/stockfish.js@10.0.2/stockfish.js'
+
+          console.log('📥 Fetching from alternative CDN...')
+          const response = await fetch(altCDN)
+
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch from alternative: ${response.status}`
+            )
+          }
+
+          const stockfishCode = await response.text()
+          const blob = new Blob([stockfishCode], {
+            type: 'application/javascript',
+          })
+          const blobURL = URL.createObjectURL(blob)
+
+          // Create workers
+          stockfishEngine = new Worker(blobURL)
+          stockfishEngine.onmessage = function (event) {
+            const line = event.data
+            if (typeof line === 'string' && line.includes('score cp')) {
               const match = line.match(/score cp (-?\d+)/)
               if (match) {
-                const centipawns = parseInt(match[1])
+                let centipawns = parseInt(match[1])
+
+                // Convert to White's perspective
+                if (game.turn() === 'b') {
+                  centipawns = -centipawns
+                }
+
                 updateEvaluationBar(centipawns / 100)
               }
             } else if (line.includes('score mate')) {
               const match = line.match(/score mate (-?\d+)/)
               if (match) {
-                const mateIn = parseInt(match[1])
+                let mateIn = parseInt(match[1])
+
+                // Invert mate score for black's turn
+                if (game.turn() === 'b') {
+                  mateIn = -mateIn
+                }
+
                 updateEvaluationBar(mateIn > 0 ? 100 : -100, true, mateIn)
               }
             }
           }
-
           stockfishEngine.postMessage('uci')
 
-          // Game playing engine (separate instance)
-          stockfishEngineGame = STOCKFISH()
-
+          stockfishEngineGame = new Worker(blobURL)
           stockfishEngineGame.onmessage = function (event) {
-            const line = event.data || event
-
-            // Extract best move
-            if (line.includes('bestmove')) {
+            const line = event.data
+            if (typeof line === 'string' && line.includes('bestmove')) {
               const match = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/)
               if (match && isWaitingForEngine) {
                 isWaitingForEngine = false
-                const moveUci = match[1]
-                executeStockfishJSMove(moveUci)
+                executeStockfishJSMove(match[1])
               }
             }
           }
-
           stockfishEngineGame.postMessage('uci')
+
+          console.log('✅ Alternative CDN worked!')
+          return true
+        } catch (error) {
+          console.error('❌ Alternative CDN also failed:', error)
+          return false
         }
       }
 
       // Get move from Stockfish.js
       function getStockfishJSMove() {
-        if (!stockfishEngineGame) return
+        if (!stockfishEngineGame) {
+          console.error('Stockfish engine not initialized')
+          alert(
+            'Stockfish.js engine is not available. Please select a different engine.'
+          )
+          return
+        }
 
         isWaitingForEngine = true
+
+        // Show thinking indicator
+        const statusEl = document.getElementById('turnStatus')
+        const originalStatus = statusEl.textContent
+        statusEl.textContent = '🤔 AI is thinking...'
+        statusEl.style.color = '#667eea'
+
         const skillLevel = Math.floor((engineStrength / 20) * 20) // 0-20
 
+        // Send commands to Stockfish
+        stockfishEngineGame.postMessage('ucinewgame')
+        stockfishEngineGame.postMessage('isready')
         stockfishEngineGame.postMessage(
           'setoption name Skill Level value ' + skillLevel
         )
         stockfishEngineGame.postMessage('position fen ' + game.fen())
         stockfishEngineGame.postMessage('go depth 15')
+
+        console.log(
+          'Requested move from Stockfish.js at skill level ' + skillLevel
+        )
+
+        // Timeout fallback
+        setTimeout(() => {
+          if (isWaitingForEngine) {
+            isWaitingForEngine = false
+            statusEl.textContent = originalStatus
+            statusEl.style.color = ''
+            alert(
+              'Engine timeout. Please try again or select a different engine.'
+            )
+          }
+        }, 30000) // 30 second timeout
       }
 
       // Execute Stockfish.js move
       function executeStockfishJSMove(moveUci) {
+        console.log('Executing Stockfish.js move:', moveUci)
+
+        // Clear thinking indicator
+        const statusEl = document.getElementById('turnStatus')
+        statusEl.style.color = ''
+
         const from = moveUci.substring(0, 2)
         const to = moveUci.substring(2, 4)
         const promotion = moveUci.length > 4 ? moveUci.substring(4) : undefined
@@ -701,6 +972,10 @@
 
           // Evaluate position after AI move
           setTimeout(() => evaluatePosition(), 100)
+        } else {
+          console.error('Failed to execute move:', moveUci)
+          alert('Invalid move from engine. Please try again.')
+          updateStatus()
         }
       }
 
@@ -786,6 +1061,60 @@
             updateStatus()
             evaluatePosition()
 
+            // Check if it's the engine's turn
+            console.log('🔄 Game loaded from localStorage')
+            console.log(
+              'Current turn:',
+              game.turn() === 'w' ? 'White' : 'Black'
+            )
+            console.log('Player color:', playerColor)
+            console.log('Current engine:', currentEngine)
+
+            if (!game.game_over()) {
+              const currentTurn = game.turn() // 'w' or 'b'
+              const isWhiteTurn = currentTurn === 'w'
+              const isPlayerWhite = playerColor === 'white'
+
+              // Determine if it's the engine's turn
+              const isEngineTurn =
+                (isWhiteTurn && !isPlayerWhite) ||
+                (!isWhiteTurn && isPlayerWhite)
+
+              if (isEngineTurn) {
+                console.log("🤖 It's the engine's turn, requesting move...")
+
+                // Wait a bit for UI to be ready
+                setTimeout(() => {
+                  if (currentEngine === 'stockfish-js') {
+                    // Use local Stockfish.js
+                    if (stockfishEngineGame) {
+                      getStockfishJSMove()
+                    } else {
+                      console.warn('⚠️ Stockfish.js not ready, initializing...')
+                      initStockfish().then((success) => {
+                        if (success && stockfishEngineGame) {
+                          getStockfishJSMove()
+                        } else {
+                          console.error(
+                            '❌ Failed to initialize Stockfish.js for engine turn'
+                          )
+                        }
+                      })
+                    }
+                  } else {
+                    // Use backend engine
+                    // We need to get the AI move from backend
+                    console.log('📡 Requesting move from backend engine...')
+                    requestBackendMove()
+                  }
+                }, 1000)
+              } else {
+                console.log("👤 It's the player's turn")
+              }
+            } else {
+              console.log('🏁 Game is over')
+            }
+
             return true
           } catch (error) {
             console.error('Error loading game state:', error)
@@ -796,6 +1125,65 @@
         return false
       }
 
+      // Request move from backend engine (for game restore)
+      async function requestBackendMove() {
+        try {
+          const response = await fetch(`${API_URL}/analyze_position`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              game_id: GAME_ID,
+              engine:
+                currentEngine === 'stockfish-backend'
+                  ? 'stockfish'
+                  : currentEngine,
+              top_moves: 1,
+              depth: 20,
+            }),
+          })
+
+          const data = await response.json()
+
+          if (data.best_move) {
+            console.log('✅ Backend suggested move:', data.best_move)
+
+            // Parse and execute the move
+            const from = data.best_move.substring(0, 2)
+            const to = data.best_move.substring(2, 4)
+            const promotion =
+              data.best_move.length > 4
+                ? data.best_move.substring(4)
+                : undefined
+
+            const moveObj = { from, to }
+            if (promotion) moveObj.promotion = promotion
+
+            const result = game.move(moveObj)
+
+            if (result) {
+              board.position(game.fen())
+              lastMove = { from, to }
+
+              setTimeout(() => {
+                highlightLastMove()
+              }, 50)
+
+              addMoveToHistory(data.best_move, 'AI')
+              updateStatus()
+              saveGameState()
+
+              // Evaluate position after AI move
+              setTimeout(() => evaluatePosition(), 100)
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error requesting backend move:', error)
+          console.warn(
+            '⚠️ Could not get engine move after reload. Please make a move or start a new game.'
+          )
+        }
+      }
+
       // Clear saved game state
       function clearGameState() {
         localStorage.removeItem('chessGameState')
@@ -803,13 +1191,24 @@
 
       // Evaluate position with local Stockfish
       function evaluatePosition() {
-        if (!stockfishEngine) return
+        if (!stockfishEngine) {
+          console.log('Stockfish engine not available for evaluation')
+          return
+        }
 
-        stockfishEngine.postMessage('position fen ' + game.fen())
-        stockfishEngine.postMessage('go depth 15')
+        try {
+          stockfishEngine.postMessage('ucinewgame')
+          stockfishEngine.postMessage('isready')
+          stockfishEngine.postMessage('position fen ' + game.fen())
+          stockfishEngine.postMessage('go depth 15')
+        } catch (error) {
+          console.error('Error evaluating position:', error)
+        }
       }
 
       // Update evaluation bar
+      // NOTE: evaluation parameter should ALWAYS be from White's perspective
+      // Positive = White advantage, Negative = Black advantage
       function updateEvaluationBar(evaluation, isMate = false, mateIn = null) {
         currentEvaluation = evaluation
 
@@ -959,6 +1358,133 @@
         })
       }
 
+      // Change engine during game
+      async function changeEngine() {
+        const newEngine = document.getElementById('engineType').value
+        const oldEngine = currentEngine
+
+        console.log(`🔄 Changing engine from ${oldEngine} to ${newEngine}`)
+
+        // Update current engine
+        currentEngine = newEngine
+
+        // If switching to Stockfish.js, make sure it's initialized
+        if (newEngine === 'stockfish-js') {
+          if (!stockfishEngineGame) {
+            console.log('Stockfish.js not initialized, initializing now...')
+
+            const statusEl = document.getElementById('turnStatus')
+            const originalStatus = statusEl.textContent
+            statusEl.textContent = '⏳ Loading Stockfish.js engine...'
+            statusEl.style.color = '#667eea'
+
+            const success = await initStockfish()
+
+            if (success && stockfishEngineGame) {
+              statusEl.textContent = originalStatus
+              statusEl.style.color = ''
+              console.log('✅ Stockfish.js ready, engine changed successfully')
+
+              // Show notification
+              showNotification(
+                '✅ Engine changed to Stockfish.js (Local Browser)'
+              )
+            } else {
+              statusEl.textContent = originalStatus
+              statusEl.style.color = ''
+              alert(
+                'Failed to initialize Stockfish.js. Reverting to previous engine.'
+              )
+
+              // Revert to old engine
+              currentEngine = oldEngine
+              document.getElementById('engineType').value = oldEngine
+              return
+            }
+          } else {
+            console.log('✅ Stockfish.js already initialized')
+            showNotification(
+              '✅ Engine changed to Stockfish.js (Local Browser)'
+            )
+          }
+        } else {
+          // Backend engine
+          const engineNames = {
+            'stockfish-backend': 'Stockfish (Backend)',
+            lichess: 'Lichess API',
+            chesscom: 'Chess.com API',
+          }
+
+          showNotification(
+            `✅ Engine changed to ${engineNames[newEngine] || newEngine}`
+          )
+          console.log(`✅ Engine changed to ${newEngine}`)
+          console.log('ℹ️ Backend will use this engine on next move')
+        }
+
+        // Save the change
+        saveGameState()
+      }
+
+      // Show notification helper
+      function showNotification(message) {
+        const notification = document.createElement('div')
+        notification.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: #48bb78;
+          color: white;
+          padding: 15px 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          z-index: 10000;
+          font-weight: 600;
+          animation: slideIn 0.3s ease;
+        `
+        notification.textContent = message
+
+        // Add animation
+        const style = document.createElement('style')
+        style.textContent = `
+          @keyframes slideIn {
+            from {
+              transform: translateX(400px);
+              opacity: 0;
+            }
+            to {
+              transform: translateX(0);
+              opacity: 1;
+            }
+          }
+          @keyframes slideOut {
+            from {
+              transform: translateX(0);
+              opacity: 1;
+            }
+            to {
+              transform: translateX(400px);
+              opacity: 0;
+            }
+          }
+        `
+
+        if (!document.querySelector('#notification-styles')) {
+          style.id = 'notification-styles'
+          document.head.appendChild(style)
+        }
+
+        document.body.appendChild(notification)
+
+        // Remove after 3 seconds
+        setTimeout(() => {
+          notification.style.animation = 'slideOut 0.3s ease'
+          setTimeout(() => {
+            document.body.removeChild(notification)
+          }, 300)
+        }, 3000)
+      }
+
       // New game
       async function newGame() {
         playerColor = document.getElementById('playerColor').value
@@ -993,17 +1519,107 @@
 
         // If using Stockfish.js, don't need backend
         if (currentEngine === 'stockfish-js') {
-          // If player chose black, get AI move
-          if (playerColor === 'black') {
-            setTimeout(() => {
-              getStockfishJSMove()
-            }, 500)
+          // Check if Stockfish is available, if not try to initialize it
+          if (!stockfishEngineGame) {
+            console.log(
+              'Stockfish.js not initialized, attempting to initialize now...'
+            )
+
+            // Show loading message
+            const statusEl = document.getElementById('turnStatus')
+            statusEl.textContent = '⏳ Loading Stockfish engine...'
+            statusEl.style.color = '#667eea'
+
+            // Try to initialize Stockfish
+            initStockfish()
+              .then((success) => {
+                if (success && stockfishEngineGame) {
+                  console.log(
+                    'Stockfish.js initialized successfully, starting game...'
+                  )
+                  statusEl.textContent = ''
+                  statusEl.style.color = ''
+
+                  // Now start the game with Stockfish
+                  if (playerColor === 'black') {
+                    setTimeout(() => {
+                      getStockfishJSMove()
+                    }, 800)
+                  } else {
+                    setTimeout(() => evaluatePosition(), 200)
+                  }
+                  updateStatus()
+                  saveGameState()
+                } else {
+                  // Failed to initialize
+                  statusEl.textContent = ''
+                  statusEl.style.color = ''
+                  alert(
+                    'Stockfish.js engine could not be loaded. This may happen because:\n\n' +
+                      '1. The CDN is blocked or slow\n' +
+                      "2. Your browser doesn't support Web Workers\n" +
+                      '3. JavaScript is restricted\n\n' +
+                      'Please try:\n' +
+                      '• Refreshing the page\n' +
+                      '• Using a different browser (Chrome/Firefox recommended)\n' +
+                      '• Selecting a backend engine instead'
+                  )
+
+                  // Fallback to backend engine
+                  document.getElementById('engineType').value =
+                    'stockfish-backend'
+                  currentEngine = 'stockfish-backend'
+                  // Don't return, continue with backend logic below
+                }
+              })
+              .catch((error) => {
+                console.error('Failed to initialize Stockfish:', error)
+                statusEl.textContent = ''
+                statusEl.style.color = ''
+                alert(
+                  'Error loading Stockfish.js. Switching to backend engine.'
+                )
+                document.getElementById('engineType').value =
+                  'stockfish-backend'
+                currentEngine = 'stockfish-backend'
+              })
+
+            // If we successfully have the engine, return here
+            if (stockfishEngineGame) {
+              // Stockfish.js is available
+              console.log('Starting new game with Stockfish.js')
+
+              // If player chose black, get AI move
+              if (playerColor === 'black') {
+                setTimeout(() => {
+                  getStockfishJSMove()
+                }, 800)
+              } else {
+                setTimeout(() => evaluatePosition(), 200)
+              }
+              updateStatus()
+              saveGameState()
+              return
+            } else {
+              // Wait for async initialization, return early
+              return
+            }
           } else {
-            setTimeout(() => evaluatePosition(), 100)
+            // Stockfish.js is already available
+            console.log('Starting new game with Stockfish.js')
+
+            // If player chose black, get AI move
+            if (playerColor === 'black') {
+              setTimeout(() => {
+                getStockfishJSMove()
+              }, 800)
+            } else {
+              setTimeout(() => evaluatePosition(), 200)
+            }
+            updateStatus()
+            saveGameState()
+            return
           }
-          updateStatus()
-          saveGameState()
-          return
         }
 
         try {
@@ -1408,11 +2024,25 @@
       }
 
       // Initialize on load
-      window.onload = function () {
+      window.onload = async function () {
         initBoard()
-        initStockfish()
         updateStatus()
         updateEvaluationBar(0) // Initialize bar at equal position
+
+        // Try to initialize Stockfish Web Workers
+        console.log('🌐 Page loaded, initializing Stockfish Web Workers...')
+
+        setTimeout(async () => {
+          const success = await initStockfish()
+
+          if (success) {
+            console.log('✅ Stockfish.js is ready!')
+          } else {
+            console.warn(
+              '⚠️ Stockfish.js not available - use backend engines instead'
+            )
+          }
+        }, 500)
 
         // Try to load saved game state
         const loaded = loadGameState()
@@ -1421,9 +2051,16 @@
         if (!loaded) {
           setTimeout(() => {
             newGame()
-          }, 500)
+          }, 1000)
         }
       }
+
+      // Add error handling for script loading
+      window.addEventListener('error', function (e) {
+        if (e.filename && e.filename.includes('stockfish')) {
+          console.error('Failed to load Stockfish.js:', e.message)
+        }
+      })
     </script>
   </body>
 </html>
