@@ -56,9 +56,114 @@
         gap: 20px;
       }
 
+      .board-container {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+      }
+
       #board {
         width: 600px;
         height: 600px;
+      }
+
+      /* Highlight last move */
+      .square-55d63 {
+        position: relative;
+      }
+
+      .highlight-last-move {
+        box-shadow: inset 0 0 0 3px rgba(255, 255, 0, 0.6) !important;
+      }
+
+      .highlight-last-move::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 0, 0.15);
+        pointer-events: none;
+      }
+
+      .eval-bar-container {
+        width: 40px;
+        height: 600px;
+        background: #2d3748;
+        border-radius: 10px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+      }
+
+      .eval-bar-white {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        background: linear-gradient(to top, #f7fafc, #e2e8f0);
+        transition: height 0.5s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .eval-bar-black {
+        position: absolute;
+        top: 0;
+        width: 100%;
+        background: linear-gradient(to bottom, #1a202c, #2d3748);
+        transition: height 0.5s ease;
+      }
+
+      .eval-text {
+        position: absolute;
+        width: 100%;
+        text-align: center;
+        font-weight: bold;
+        font-size: 11px;
+        color: #4a5568;
+        z-index: 10;
+        text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+      }
+
+      .eval-text.top {
+        top: 10px;
+      }
+
+      .eval-text.bottom {
+        bottom: 10px;
+      }
+
+      .eval-text.center {
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .eval-advantage {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 255, 255, 0.9);
+        padding: 4px 8px;
+        border-radius: 5px;
+        font-size: 12px;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        z-index: 11;
+      }
+
+      .eval-advantage.white-adv {
+        color: #2d3748;
+        bottom: 5px;
+      }
+
+      .eval-advantage.black-adv {
+        color: #f7fafc;
+        background: rgba(45, 55, 72, 0.9);
+        top: 5px;
       }
 
       .controls {
@@ -355,7 +460,19 @@
       <div class="main-content">
         <!-- Board Section -->
         <div class="board-section">
-          <div id="board"></div>
+          <div class="board-container">
+            <!-- Evaluation Bar -->
+            <div class="eval-bar-container">
+              <div class="eval-bar-black" id="evalBarBlack"></div>
+              <div class="eval-bar-white" id="evalBarWhite"></div>
+              <div class="eval-text top">♚</div>
+              <div class="eval-text bottom">♔</div>
+              <div class="eval-text center" id="evalBarText">0.0</div>
+            </div>
+
+            <!-- Chess Board -->
+            <div id="board"></div>
+          </div>
 
           <div class="controls">
             <button class="btn btn-primary" onclick="newGame()">
@@ -395,7 +512,12 @@
             <div class="setting">
               <label>Engine:</label>
               <select id="engineType">
-                <option value="stockfish" selected>Stockfish (Local)</option>
+                <option value="stockfish-backend" selected>
+                  Stockfish (Backend)
+                </option>
+                <option value="stockfish-js">
+                  Stockfish.js (Local Browser)
+                </option>
                 <option value="lichess">Lichess API</option>
                 <option value="chesscom">Chess.com API</option>
               </select>
@@ -462,6 +584,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js"></script>
 
     <script>
       // Configuration
@@ -472,9 +595,264 @@
       let game = new Chess()
       let board = null
       let playerColor = 'white'
-      let currentEngine = 'stockfish'
+      let currentEngine = 'stockfish-backend'
       let engineStrength = 20
       let isPlayerTurn = true
+      let stockfishEngine = null
+      let stockfishEngineGame = null // Separate Stockfish instance for playing
+      let currentEvaluation = 0
+      let lastMove = null // Track last move for highlighting
+      let isWaitingForEngine = false
+
+      // Initialize Stockfish.js for local evaluation
+      function initStockfish() {
+        if (typeof STOCKFISH === 'function') {
+          // Evaluation engine
+          stockfishEngine = STOCKFISH()
+
+          stockfishEngine.onmessage = function (event) {
+            const line = event.data || event
+
+            // Parse evaluation from Stockfish output
+            if (line.includes('score cp')) {
+              const match = line.match(/score cp (-?\d+)/)
+              if (match) {
+                const centipawns = parseInt(match[1])
+                updateEvaluationBar(centipawns / 100)
+              }
+            } else if (line.includes('score mate')) {
+              const match = line.match(/score mate (-?\d+)/)
+              if (match) {
+                const mateIn = parseInt(match[1])
+                updateEvaluationBar(mateIn > 0 ? 100 : -100, true, mateIn)
+              }
+            }
+          }
+
+          stockfishEngine.postMessage('uci')
+
+          // Game playing engine (separate instance)
+          stockfishEngineGame = STOCKFISH()
+
+          stockfishEngineGame.onmessage = function (event) {
+            const line = event.data || event
+
+            // Extract best move
+            if (line.includes('bestmove')) {
+              const match = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/)
+              if (match && isWaitingForEngine) {
+                isWaitingForEngine = false
+                const moveUci = match[1]
+                executeStockfishJSMove(moveUci)
+              }
+            }
+          }
+
+          stockfishEngineGame.postMessage('uci')
+        }
+      }
+
+      // Get move from Stockfish.js
+      function getStockfishJSMove() {
+        if (!stockfishEngineGame) return
+
+        isWaitingForEngine = true
+        const skillLevel = Math.floor((engineStrength / 20) * 20) // 0-20
+
+        stockfishEngineGame.postMessage(
+          'setoption name Skill Level value ' + skillLevel
+        )
+        stockfishEngineGame.postMessage('position fen ' + game.fen())
+        stockfishEngineGame.postMessage('go depth 15')
+      }
+
+      // Execute Stockfish.js move
+      function executeStockfishJSMove(moveUci) {
+        const from = moveUci.substring(0, 2)
+        const to = moveUci.substring(2, 4)
+        const promotion = moveUci.length > 4 ? moveUci.substring(4) : undefined
+
+        const moveObj = {
+          from: from,
+          to: to,
+        }
+
+        if (promotion) {
+          moveObj.promotion = promotion
+        }
+
+        const result = game.move(moveObj)
+
+        if (result) {
+          lastMove = { from: from, to: to }
+          board.position(game.fen())
+          highlightLastMove()
+          addMoveToHistory(moveUci, 'AI')
+          updateStatus()
+          saveGameState()
+
+          // Evaluate position after AI move
+          setTimeout(() => evaluatePosition(), 100)
+        }
+      }
+
+      // Highlight last move on board
+      function highlightLastMove() {
+        // Remove previous highlights
+        $('#board .square-55d63').removeClass('highlight-last-move')
+
+        if (lastMove) {
+          // Add highlight to last move squares
+          const fromSquare = '.square-' + lastMove.from
+          const toSquare = '.square-' + lastMove.to
+
+          $(fromSquare).addClass('highlight-last-move')
+          $(toSquare).addClass('highlight-last-move')
+        }
+      }
+
+      // Save game state to localStorage
+      function saveGameState() {
+        const gameState = {
+          fen: game.fen(),
+          pgn: game.pgn(),
+          playerColor: playerColor,
+          currentEngine: currentEngine,
+          engineStrength: engineStrength,
+          lastMove: lastMove,
+          moveHistory: game.history({ verbose: true }),
+        }
+
+        localStorage.setItem('chessGameState', JSON.stringify(gameState))
+      }
+
+      // Load game state from localStorage
+      function loadGameState() {
+        const savedState = localStorage.getItem('chessGameState')
+
+        if (savedState) {
+          try {
+            const gameState = JSON.parse(savedState)
+
+            // Restore game
+            game.load(gameState.fen)
+            board.position(gameState.fen)
+
+            // Restore settings
+            playerColor = gameState.playerColor
+            currentEngine = gameState.currentEngine
+            engineStrength = gameState.engineStrength
+            lastMove = gameState.lastMove
+
+            // Update UI
+            document.getElementById('playerColor').value = playerColor
+            document.getElementById('engineType').value = currentEngine
+            document.getElementById('engineStrength').value = engineStrength
+            document.getElementById('strengthValue').textContent =
+              engineStrength
+
+            if (playerColor === 'black') {
+              board.orientation('black')
+            } else {
+              board.orientation('white')
+            }
+
+            // Restore move history
+            const historyContainer = document.getElementById('moveHistory')
+            historyContainer.innerHTML = ''
+
+            const moves = gameState.moveHistory
+            for (let i = 0; i < moves.length; i++) {
+              const player =
+                moves[i].color === 'w'
+                  ? playerColor === 'white'
+                    ? 'You'
+                    : 'AI'
+                  : playerColor === 'white'
+                  ? 'AI'
+                  : 'You'
+              addMoveToHistory(moves[i].from + moves[i].to, player)
+            }
+
+            highlightLastMove()
+            updateStatus()
+            evaluatePosition()
+
+            return true
+          } catch (error) {
+            console.error('Error loading game state:', error)
+            return false
+          }
+        }
+
+        return false
+      }
+
+      // Clear saved game state
+      function clearGameState() {
+        localStorage.removeItem('chessGameState')
+      }
+
+      // Evaluate position with local Stockfish
+      function evaluatePosition() {
+        if (!stockfishEngine) return
+
+        stockfishEngine.postMessage('position fen ' + game.fen())
+        stockfishEngine.postMessage('go depth 15')
+      }
+
+      // Update evaluation bar
+      function updateEvaluationBar(evaluation, isMate = false, mateIn = null) {
+        currentEvaluation = evaluation
+
+        const evalBarWhite = document.getElementById('evalBarWhite')
+        const evalBarBlack = document.getElementById('evalBarBlack')
+        const evalBarText = document.getElementById('evalBarText')
+
+        // Clamp evaluation between -10 and +10 for display
+        let displayEval = Math.max(-10, Math.min(10, evaluation))
+
+        // Calculate percentage (50% = equal, 0% = black winning, 100% = white winning)
+        // Formula: 50 + (eval * 5) to map -10..+10 to 0..100
+        let whitePercentage = 50 + displayEval * 5
+        whitePercentage = Math.max(0, Math.min(100, whitePercentage))
+
+        const blackPercentage = 100 - whitePercentage
+
+        // Update bar heights
+        evalBarWhite.style.height = whitePercentage + '%'
+        evalBarBlack.style.height = blackPercentage + '%'
+
+        // Update text
+        if (isMate && mateIn !== null) {
+          evalBarText.textContent = `M${Math.abs(mateIn)}`
+          evalBarText.style.color = mateIn > 0 ? '#2d3748' : '#f7fafc'
+        } else {
+          const evalText =
+            evaluation >= 0
+              ? `+${evaluation.toFixed(1)}`
+              : evaluation.toFixed(1)
+          evalBarText.textContent = evalText
+
+          // Position text in the larger section
+          if (whitePercentage > 60) {
+            evalBarText.style.color = '#2d3748'
+            evalBarText.style.top = 'auto'
+            evalBarText.style.bottom = whitePercentage / 2 + '%'
+            evalBarText.style.transform = 'translateY(50%)'
+          } else if (blackPercentage > 60) {
+            evalBarText.style.color = '#f7fafc'
+            evalBarText.style.top = blackPercentage / 2 + '%'
+            evalBarText.style.bottom = 'auto'
+            evalBarText.style.transform = 'translateY(-50%)'
+          } else {
+            evalBarText.style.color = evaluation >= 0 ? '#2d3748' : '#f7fafc'
+            evalBarText.style.top = '50%'
+            evalBarText.style.bottom = 'auto'
+            evalBarText.style.transform = 'translateY(-50%)'
+          }
+        }
+      }
 
       // Initialize board
       function initBoard() {
@@ -524,8 +902,28 @@
         // Illegal move
         if (move === null) return 'snapback'
 
-        // Make move on server
-        makeMove(move.from + move.to)
+        // Save last move for highlighting
+        lastMove = { from: source, to: target }
+        highlightLastMove()
+
+        // Evaluate position after player move
+        setTimeout(() => evaluatePosition(), 100)
+
+        // Save game state
+        saveGameState()
+
+        // Make move on server or use Stockfish.js
+        if (currentEngine === 'stockfish-js') {
+          addMoveToHistory(move.from + move.to, 'You')
+          updateStatus()
+
+          // Get AI move from Stockfish.js
+          setTimeout(() => {
+            getStockfishJSMove()
+          }, 500)
+        } else {
+          makeMove(move.from + move.to)
+        }
       }
 
       // Snap end handler
@@ -571,6 +969,31 @@
         document.getElementById('captureMoves').innerHTML =
           'No captures available'
 
+        // Reset evaluation bar
+        updateEvaluationBar(0)
+
+        // Clear last move highlight
+        lastMove = null
+        highlightLastMove()
+
+        // Clear saved state for new game
+        clearGameState()
+
+        // If using Stockfish.js, don't need backend
+        if (currentEngine === 'stockfish-js') {
+          // If player chose black, get AI move
+          if (playerColor === 'black') {
+            setTimeout(() => {
+              getStockfishJSMove()
+            }, 500)
+          } else {
+            setTimeout(() => evaluatePosition(), 100)
+          }
+          updateStatus()
+          saveGameState()
+          return
+        }
+
         try {
           const response = await fetch(`${API_URL}/new_game`, {
             method: 'POST',
@@ -608,6 +1031,9 @@
                 addMoveToHistory(data.ai_move, 'AI')
                 updateStatus()
 
+                // Evaluate position after AI move
+                setTimeout(() => evaluatePosition(), 100)
+
                 if (data.analysis) {
                   displayAnalysis(data.analysis)
                 }
@@ -616,6 +1042,7 @@
                 // Fallback: sync with server FEN
                 game.load(data.fen)
                 board.position(data.fen)
+                setTimeout(() => evaluatePosition(), 100)
               }
             }, 500)
           }
@@ -710,13 +1137,25 @@
         currentEngine = document.getElementById('engineType').value
         const depth = parseInt(document.getElementById('analysisDepth').value)
 
+        // If using Stockfish.js, we can't get detailed analysis easily
+        if (currentEngine === 'stockfish-js') {
+          document.getElementById('analysisLoading').classList.remove('active')
+          alert(
+            'Detailed analysis not available with Stockfish.js engine. Please use backend engines for full analysis.'
+          )
+          return
+        }
+
         try {
           const response = await fetch(`${API_URL}/analyze_position`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               game_id: GAME_ID,
-              engine: currentEngine,
+              engine:
+                currentEngine === 'stockfish-backend'
+                  ? 'stockfish'
+                  : currentEngine,
               top_moves: 5,
               depth: depth,
             }),
@@ -739,6 +1178,11 @@
         if (!analysis.top_moves || analysis.top_moves.length === 0) {
           container.innerHTML = '<p>No analysis available</p>'
           return
+        }
+
+        // Update evaluation bar with position evaluation
+        if (analysis.position_evaluation !== undefined) {
+          updateEvaluationBar(analysis.position_evaluation / 100)
         }
 
         analysis.top_moves.forEach((move, index) => {
@@ -940,7 +1384,19 @@
       // Initialize on load
       window.onload = function () {
         initBoard()
+        initStockfish()
         updateStatus()
+        updateEvaluationBar(0) // Initialize bar at equal position
+
+        // Try to load saved game state
+        const loaded = loadGameState()
+
+        // If no saved state, start a new game
+        if (!loaded) {
+          setTimeout(() => {
+            newGame()
+          }, 500)
+        }
       }
     </script>
   </body>
