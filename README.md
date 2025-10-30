@@ -1,156 +1,296 @@
-# Chess API Backend
+# Advanced Chess Game - Installation and Usage Guide
 
-This is a Flask-based API for playing chess against a computer opponent (Stockfish), analyzing chess positions, and getting move recommendations. It also provides integration with Lichess and Chess.com APIs for analysis.
+## Project Files
+
+```
+/mnt/user-data/outputs/
+├── advanced_chess.html              # Updated frontend
+├── chess_backend_refactored.py      # Refactored backend (USE THIS ONE)
+├── REFACTORING_DOCUMENTATION.md     # Complete refactoring documentation
+└── CHANGES.md                       # Evaluation bar fixes
+```
 
 ## Installation
 
-To use this API, you'll need to have python3 3 and Stockfish installed on your system.
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone https://github.com/patchamama/Chess-API-Example.git
-    cd Chess-API-Example
-    ```
-
-2.  **Create and activate a virtual environment:**
-
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-
-    _(On Windows, use `venv\Scripts\activate`)_
-
-3.  **Install the dependencies:**
-
-    ```bash
-    pip3 install -r requirements.txt
-    ```
-
-4.  **Install Stockfish:**
-    Make sure you have the Stockfish engine installed and accessible in your system's PATH. You can download it from the [official Stockfish website](https://stockfishchess.org/download/).
-
-## How to Run
-
-Once the installation is complete, you can run the Flask server:
+### 1. Prerequisites
 
 ```bash
-python3 chess-api-backend.py
+# Python 3.8+
+python --version
+
+# Pip
+pip --version
 ```
 
-The server will start on `http://127.0.0.1:5000`.
+### 2. Install Dependencies
 
-## Endpoints
+```bash
+pip install flask flask-cors python-chess requests
+```
 
-Here are the available endpoints:
+### 3. Install Stockfish
 
-### 1. New Game
+#### Ubuntu/Debian:
 
-- **Method:** `POST`
-- **Endpoint:** `/new_game`
-- **Description:** Starts a new chess game.
-- **Payload (JSON):**
-  - `game_id` (string, optional): A unique ID for the game. Defaults to 'default'.
-  - `color` (string, optional): The player's color ('white' or 'black'). Defaults to 'white'.
-  - `engine_strength` (integer, optional): The engine's strength (1-20). Defaults to 20.
-- **Curl Example:**
-  ```bash
-  curl -X POST -H "Content-Type: application/json" -d '{
-      "game_id": "my_new_game",
-      "color": "white",
-      "engine_strength": 15
-  }' http://127.0.0.1:5000/new_game
-  ```
+```bash
+sudo apt-get update
+sudo apt-get install stockfish
+```
 
-### 2. Make a Move
+#### macOS (with Homebrew):
 
-- **Method:** `POST`
-- **Endpoint:** `/make_move`
-- **Description:** Makes a move in the specified game.
-- **Payload (JSON):**
-  - `game_id` (string, optional): The ID of the game. Defaults to 'default'.
-  - `move` (string): The move in UCI format (e.g., 'e2e4').
-- **Curl Example:**
-  ```bash
-  curl -X POST -H "Content-Type: application/json" -d '{
-      "game_id": "my_new_game",
-      "move": "e2e4"
-  }' http://127.0.0.1:5000/make_move
-  ```
+```bash
+brew install stockfish
+```
 
-### 3. Analyze Position
+#### Windows:
 
-- **Method:** `POST`
-- **Endpoint:** `/analyze_position`
-- **Description:** Analyzes the current position of a game.
-- **Payload (JSON):**
-  - `game_id` (string, optional): The ID of the game. Defaults to 'default'.
-  - `engine` (string, optional): The engine to use for analysis ('stockfish', 'lichess', 'chesscom'). Defaults to 'stockfish'.
-  - `top_moves` (integer, optional): The number of top moves to return. Defaults to 5.
-  - `depth` (integer, optional): The search depth for Stockfish. Defaults to 5.
-- **Curl Example:**
-  ```bash
-  curl -X POST -H "Content-Type: application/json" -d '{
-      "game_id": "my_new_game",
-      "engine": "stockfish",
-      "top_moves": 3,
-      "depth": 15
-  }' http://127.0.0.1:5000/analyze_position
-  ```
+1. Download from: https://stockfishchess.org/download/
+2. Extract the executable
+3. Update the path in `chess_backend_refactored.py`:
 
-### 4. Set Engine Strength
+```python
+STOCKFISH_PATH = "C:\\Path\\To\\stockfish.exe"
+```
 
-- **Method:** `POST`
-- **Endpoint:** `/set_engine_strength`
-- **Description:** Sets the engine's strength for a game.
-- **Payload (JSON):**
-  - `game_id` (string, optional): The ID of the game. Defaults to 'default'.
-  - `strength` (integer): The engine's strength (1-20).
-- **Curl Example:**
-  ```bash
-  curl -X POST -H "Content-Type: application/json" -d '{
-      "game_id": "my_new_game",
-      "strength": 10
-  }' http://127.0.0.1:5000/set_engine_strength
-  ```
+## Running the Project
 
-### 5. Get Capture Moves
+### 1. Start the Backend
 
-- **Method:** `GET`
-- **Endpoint:** `/get_capture_moves`
-- **Description:** Returns all capture moves in the current position.
-- **Query Parameters:**
-  - `game_id` (string, optional): The ID of the game. Defaults to 'default'.
-  - `engine` (string, optional): The engine to use for analysis. Defaults to 'stockfish'.
-- **Curl Example:**
-  ```bash
-  curl "http://127.0.0.1:5000/get_capture_moves?game_id=my_new_game&engine=stockfish"
-  ```
+```bash
+cd /path/to/your/project
+python chess_backend_refactored.py
+```
 
-### 6. Legal Moves
+You should see:
 
-- **Method:** `GET`
-- **Endpoint:** `/legal_moves`
-- **Description:** Returns all legal moves for a specific square.
-- **Query Parameters:**
-  - `game_id` (string, optional): The ID of the game. Defaults to 'default'.
-  - `square` (string): The square to get legal moves for (e.g., 'e2').
-- **Curl Example:**
-  ```bash
-  curl "http://127.0.0.1:5000/legal_moves?game_id=my_new_game&square=e2"
-  ```
+```
+============================================================
+ADVANCED CHESS SERVER (REFACTORED)
+============================================================
+URL: http://localhost:5000
 
-### 7. Compare Engines
+Features:
+  - FEN support in all endpoints
+  - Automatic position synchronization
+  - Multi-engine in make_move (Stockfish, Lichess, Chess.com)
+  - Analysis of ALL legal moves
+  - Configurable strength level (1-20)
+...
+ * Running on http://127.0.0.1:5000
+```
 
-- **Method:** `POST`
-- **Endpoint:** `/compare_engines`
-- **Description:** Compares the analysis of Stockfish and Lichess for the current position.
-- **Payload (JSON):**
-  - `game_id` (string, optional): The ID of the game. Defaults to 'default'.
-- **Curl Example:**
-  ```bash
-  curl -X POST -H "Content-Type: application/json" -d '{
-      "game_id": "my_new_game"
-  }' http://127.0.0.1:5000/compare_engines
-  ```
+### 2. Open the Frontend
+
+#### Option A: Simple Local Server
+
+```bash
+# In another terminal, navigate to the project folder
+cd /path/to/your/project
+
+# Start simple HTTP server
+python -m http.server 8080
+```
+
+Then open: http://localhost:8080/advanced_chess.html
+
+#### Option B: Open Directly
+
+```bash
+# Simply open the HTML file in your browser
+# (Some features may not work due to CORS restrictions)
+```
+
+## How to Use
+
+### Main Options
+
+#### 1. Select Color
+
+- White: You play as white (you start)
+- Black: You play as black (engine starts)
+
+#### 2. Select Engine
+
+- **Stockfish (Backend)**: Stockfish running on Python server
+
+  - More powerful
+  - Complete analysis
+  - Requires active backend
+
+- **Stockfish.js (Local Browser)**: Stockfish running in your browser
+
+  - Works offline
+  - No backend required
+  - Limited analysis
+
+- **Lichess API**: Lichess.org engine
+
+  - Very fast
+  - Opening database
+  - Requires internet
+
+- **Chess.com API**: Chess.com engine (fallback to Stockfish)
+  - Limited API, uses Stockfish as fallback
+
+#### 3. Engine Strength
+
+- Slide from 1 to 20
+- 1 = Absolute beginner
+- 20 = Grandmaster
+
+### Main Functions
+
+#### New Game
+
+Starts a new game with current settings
+
+#### Analyze Position
+
+Analyzes current position and shows:
+
+- Top 5 best moves
+- Evaluation of each move
+- Mate indicators
+
+#### Show Captures
+
+Shows only capture moves with their evaluation
+
+#### Compare Engines
+
+Compares what different engines suggest for the current position
+
+### Automatic Features
+
+#### Auto-Save
+
+- Game automatically saves to localStorage
+- When you reload the page, it continues where you left off
+
+#### Evaluation Bar
+
+- Shows current advantage
+- Positive (+): White advantage
+- Negative (-): Black advantage
+- Updates automatically after each move
+
+#### Live Engine Switching
+
+- You can change engines during the game
+- Next move will use the selected engine
+
+## Troubleshooting
+
+### Error: "Game not found"
+
+SOLVED - The refactored backend automatically synchronizes with FEN
+
+### Stockfish.js does not load
+
+1. Check browser console (F12)
+2. Verify your internet connection (needs to download the engine)
+3. Try another browser (Chrome/Firefox recommended)
+4. Alternatively, use Stockfish (Backend)
+
+### Backend does not respond
+
+```bash
+# Verify that the backend is running
+# You should see this in the terminal:
+ * Running on http://127.0.0.1:5000
+
+# Verify that port 5000 is free
+netstat -an | grep 5000
+
+# If it's occupied, change the port in:
+# 1. chess_backend_refactored.py: app.run(debug=True, port=5001)
+# 2. advanced_chess.html: const API_URL = 'http://localhost:5001'
+```
+
+### CORS Errors
+
+If you see CORS errors in the console:
+
+1. Make sure the backend is running
+2. Use a local HTTP server (don't open the HTML directly)
+3. Verify that flask-cors is installed: `pip install flask-cors`
+
+### Evaluation bar jumps too much
+
+SOLVED - Now always shows from white's perspective
+
+## Advanced Features
+
+### Backend API
+
+You can use the backend directly with tools like curl or Postman:
+
+#### Create new game:
+
+```bash
+curl -X POST http://localhost:5000/new_game \
+  -H "Content-Type: application/json" \
+  -d '{
+    "game_id": "test123",
+    "color": "white",
+    "engine": "stockfish",
+    "engine_strength": 15
+  }'
+```
+
+#### Make a move:
+
+```bash
+curl -X POST http://localhost:5000/make_move \
+  -H "Content-Type: application/json" \
+  -d '{
+    "game_id": "test123",
+    "move": "e2e4",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "engine": "lichess"
+  }'
+```
+
+#### Analyze position:
+
+```bash
+curl -X POST http://localhost:5000/analyze_position \
+  -H "Content-Type: application/json" \
+  -d '{
+    "game_id": "test123",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+    "engine": "stockfish",
+    "top_moves": 5,
+    "depth": 20
+  }'
+```
+
+## Additional Documentation
+
+- **REFACTORING_DOCUMENTATION.md**: Technical details of the refactoring
+- **CHANGES.md**: Evaluation bar fixes
+- Commented code in both files (HTML and Python)
+
+## Report Issues
+
+If you find any problems:
+
+1. Check the browser console (F12 -> Console)
+2. Check the backend logs (terminal where Python runs)
+3. Verify that all dependencies are installed
+4. Read the troubleshooting documentation above
+
+## Enjoy Playing
+
+The game is fully functional with:
+
+- 4 different engines
+- Complete analysis
+- Corrected evaluation bar
+- Auto-save and auto-restore
+- Live engine switching
+- Responsive design (mobile and desktop)
+- Automatic synchronization with backend
+
+Good luck with your games!
