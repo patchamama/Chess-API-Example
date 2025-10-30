@@ -1,14 +1,30 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_swagger_ui import get_swaggerui_blueprint
 import chess
 import chess.engine
 import requests
 import os
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
+import json
 
 app = Flask(__name__)
 CORS(app)
+
+# Swagger UI configuration
+SWAGGER_URL = '/api/docs'
+API_URL = '/api/swagger.json'
+
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config={
+        'app_name': "Advanced Chess API"
+    }
+)
+
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 # Stockfish configuration
 STOCKFISH_PATH = "stockfish"  # Adjust according to operating system
@@ -57,6 +73,588 @@ def get_or_create_game(game_id: str, fen: Optional[str] = None,
         print(f"🔄 Game {game_id} updated with new FEN")
     
     return games[game_id]
+
+@app.route('/api/swagger.json')
+def swagger_spec():
+    """Returns the Swagger/OpenAPI specification"""
+    spec = {
+        "openapi": "3.0.0",
+        "info": {
+            "title": "Advanced Chess API",
+            "description": "Multi-engine chess API with Stockfish, Lichess, and Chess.com support. Features FEN synchronization, position analysis, and configurable engine strength.",
+            "version": "1.0.0",
+            "contact": {
+                "name": "Chess API Support"
+            }
+        },
+        "servers": [
+            {
+                "url": "http://localhost:5000",
+                "description": "Local development server"
+            }
+        ],
+        "tags": [
+            {
+                "name": "Game Management",
+                "description": "Endpoints for creating and managing chess games"
+            },
+            {
+                "name": "Moves",
+                "description": "Endpoints for making and analyzing moves"
+            },
+            {
+                "name": "Analysis",
+                "description": "Position analysis and evaluation endpoints"
+            },
+            {
+                "name": "Configuration",
+                "description": "Engine configuration endpoints"
+            }
+        ],
+        "paths": {
+            "/new_game": {
+                "post": {
+                    "tags": ["Game Management"],
+                    "summary": "Start a new chess game",
+                    "description": "Creates a new game with optional FEN position, player color, and engine settings",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "default": "default",
+                                            "description": "Unique identifier for the game"
+                                        },
+                                        "color": {
+                                            "type": "string",
+                                            "enum": ["white", "black"],
+                                            "default": "white",
+                                            "description": "Player's color"
+                                        },
+                                        "engine_strength": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 20,
+                                            "default": 20,
+                                            "description": "Engine strength level (1=weakest, 20=strongest)"
+                                        },
+                                        "engine": {
+                                            "type": "string",
+                                            "enum": ["stockfish", "lichess", "chesscom"],
+                                            "default": "stockfish",
+                                            "description": "Chess engine to use"
+                                        },
+                                        "fen": {
+                                            "type": "string",
+                                            "description": "Optional FEN string for custom starting position"
+                                        }
+                                    }
+                                },
+                                "examples": {
+                                    "default_game": {
+                                        "summary": "Default new game",
+                                        "value": {
+                                            "game_id": "game1",
+                                            "color": "white",
+                                            "engine_strength": 20,
+                                            "engine": "stockfish"
+                                        }
+                                    },
+                                    "custom_position": {
+                                        "summary": "Game from FEN",
+                                        "value": {
+                                            "game_id": "custom1",
+                                            "color": "white",
+                                            "engine": "lichess",
+                                            "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Game created successfully",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "game_id": {"type": "string"},
+                                            "fen": {"type": "string"},
+                                            "player_color": {"type": "string"},
+                                            "engine_strength": {"type": "integer"},
+                                            "engine": {"type": "string"},
+                                            "ai_move": {"type": "string"},
+                                            "analysis": {"type": "object"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/make_move": {
+                "post": {
+                    "tags": ["Moves"],
+                    "summary": "Make a player move",
+                    "description": "Processes the player's move and returns the engine's response",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["move"],
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "default": "default"
+                                        },
+                                        "move": {
+                                            "type": "string",
+                                            "description": "Move in UCI format (e.g., 'e2e4')"
+                                        },
+                                        "fen": {
+                                            "type": "string",
+                                            "description": "Optional FEN for position sync"
+                                        },
+                                        "engine": {
+                                            "type": "string",
+                                            "enum": ["stockfish", "lichess", "chesscom"],
+                                            "default": "stockfish"
+                                        },
+                                        "engine_strength": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 20,
+                                            "default": 20
+                                        }
+                                    }
+                                },
+                                "examples": {
+                                    "simple_move": {
+                                        "summary": "Simple move",
+                                        "value": {
+                                            "game_id": "game1",
+                                            "move": "e2e4",
+                                            "engine": "stockfish"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Move processed successfully",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "player_move": {"type": "string"},
+                                            "ai_move": {"type": "string"},
+                                            "fen": {"type": "string"},
+                                            "game_over": {"type": "boolean"},
+                                            "moves_history": {
+                                                "type": "array",
+                                                "items": {"type": "string"}
+                                            },
+                                            "analysis": {"type": "object"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "400": {
+                            "description": "Illegal move or error"
+                        }
+                    }
+                }
+            },
+            "/sync_position": {
+                "post": {
+                    "tags": ["Game Management"],
+                    "summary": "Synchronize board position",
+                    "description": "Synchronizes the board position with the backend using FEN",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["fen"],
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "default": "default"
+                                        },
+                                        "fen": {
+                                            "type": "string",
+                                            "description": "FEN string of current position"
+                                        },
+                                        "player_color": {
+                                            "type": "string",
+                                            "enum": ["white", "black"],
+                                            "default": "white"
+                                        },
+                                        "engine_strength": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 20,
+                                            "default": 20
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Position synchronized"
+                        },
+                        "400": {
+                            "description": "FEN required"
+                        }
+                    }
+                }
+            },
+            "/analyze_position": {
+                "post": {
+                    "tags": ["Analysis"],
+                    "summary": "Analyze current position",
+                    "description": "Analyzes the current position with the chosen engine",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "default": "default"
+                                        },
+                                        "engine": {
+                                            "type": "string",
+                                            "enum": ["stockfish", "lichess", "chesscom"],
+                                            "default": "stockfish"
+                                        },
+                                        "top_moves": {
+                                            "type": "integer",
+                                            "default": 5,
+                                            "description": "Number of top moves to return"
+                                        },
+                                        "depth": {
+                                            "type": "integer",
+                                            "default": 20,
+                                            "description": "Search depth for Stockfish"
+                                        },
+                                        "fen": {
+                                            "type": "string",
+                                            "description": "Optional FEN for position sync"
+                                        }
+                                    }
+                                },
+                                "examples": {
+                                    "stockfish_analysis": {
+                                        "summary": "Stockfish deep analysis",
+                                        "value": {
+                                            "game_id": "game1",
+                                            "engine": "stockfish",
+                                            "top_moves": 5,
+                                            "depth": 20
+                                        }
+                                    },
+                                    "lichess_analysis": {
+                                        "summary": "Lichess cloud analysis",
+                                        "value": {
+                                            "game_id": "game1",
+                                            "engine": "lichess",
+                                            "top_moves": 3
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Analysis completed",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "best_move": {"type": "string"},
+                                            "top_moves": {"type": "array"},
+                                            "all_legal_moves": {"type": "array"},
+                                            "capture_moves": {"type": "array"},
+                                            "position_evaluation": {"type": "number"},
+                                            "fen": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "404": {
+                            "description": "Game not found"
+                        },
+                        "500": {
+                            "description": "Analysis error"
+                        }
+                    }
+                }
+            },
+            "/set_engine_strength": {
+                "post": {
+                    "tags": ["Configuration"],
+                    "summary": "Set engine strength",
+                    "description": "Changes the engine strength level (1-20)",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["strength"],
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "default": "default"
+                                        },
+                                        "strength": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 20,
+                                            "description": "Engine strength (1=weakest, 20=strongest)"
+                                        },
+                                        "fen": {
+                                            "type": "string",
+                                            "description": "Optional FEN for position sync"
+                                        }
+                                    }
+                                },
+                                "examples": {
+                                    "beginner": {
+                                        "summary": "Beginner level",
+                                        "value": {
+                                            "game_id": "game1",
+                                            "strength": 5
+                                        }
+                                    },
+                                    "expert": {
+                                        "summary": "Expert level",
+                                        "value": {
+                                            "game_id": "game1",
+                                            "strength": 20
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Strength updated"
+                        },
+                        "400": {
+                            "description": "Invalid strength value"
+                        },
+                        "404": {
+                            "description": "Game not found"
+                        }
+                    }
+                }
+            },
+            "/get_capture_moves": {
+                "get": {
+                    "tags": ["Analysis"],
+                    "summary": "Get capture moves",
+                    "description": "Returns only capture moves with evaluation",
+                    "parameters": [
+                        {
+                            "name": "game_id",
+                            "in": "query",
+                            "schema": {
+                                "type": "string",
+                                "default": "default"
+                            }
+                        },
+                        {
+                            "name": "engine",
+                            "in": "query",
+                            "schema": {
+                                "type": "string",
+                                "enum": ["stockfish", "lichess", "chesscom"],
+                                "default": "stockfish"
+                            }
+                        },
+                        {
+                            "name": "fen",
+                            "in": "query",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "description": "Optional FEN for position sync"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Capture moves returned",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "capture_moves": {"type": "array"},
+                                            "total_captures": {"type": "integer"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "404": {
+                            "description": "Game not found"
+                        },
+                        "500": {
+                            "description": "Analysis error"
+                        }
+                    }
+                }
+            },
+            "/legal_moves": {
+                "get": {
+                    "tags": ["Moves"],
+                    "summary": "Get legal moves",
+                    "description": "Returns legal moves for a specific square",
+                    "parameters": [
+                        {
+                            "name": "game_id",
+                            "in": "query",
+                            "schema": {
+                                "type": "string",
+                                "default": "default"
+                            }
+                        },
+                        {
+                            "name": "square",
+                            "in": "query",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "description": "Square in algebraic notation (e.g., 'e2')"
+                        },
+                        {
+                            "name": "fen",
+                            "in": "query",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "description": "Optional FEN for position sync"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Legal moves returned",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "legal_moves": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "to": {"type": "string"},
+                                                        "move": {"type": "string"},
+                                                        "is_capture": {"type": "boolean"}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "404": {
+                            "description": "Game not found"
+                        }
+                    }
+                }
+            },
+            "/compare_engines": {
+                "post": {
+                    "tags": ["Analysis"],
+                    "summary": "Compare engines",
+                    "description": "Compares the best move from different engines",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "default": "default"
+                                        },
+                                        "fen": {
+                                            "type": "string",
+                                            "description": "Optional FEN for position sync"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Engine comparison completed",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "stockfish": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "best_move": {"type": "string"},
+                                                    "evaluation": {"type": "number"},
+                                                    "top_3": {"type": "array"}
+                                                }
+                                            },
+                                            "lichess": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "best_move": {"type": "string"},
+                                                    "evaluation": {"type": "number"},
+                                                    "top_3": {"type": "array"}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "404": {
+                            "description": "Game not found"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return jsonify(spec)
 
 @app.route('/new_game', methods=['POST'])
 def new_game():
@@ -611,17 +1209,40 @@ def compare_engines():
     
     return jsonify(results)
 
+@app.route('/')
+def home():
+    """Home page with API information"""
+    return jsonify({
+        'message': 'Advanced Chess API',
+        'version': '1.0.0',
+        'documentation': '/api/docs',
+        'swagger_json': '/api/swagger.json',
+        'endpoints': {
+            'new_game': 'POST /new_game',
+            'make_move': 'POST /make_move',
+            'sync_position': 'POST /sync_position',
+            'analyze_position': 'POST /analyze_position',
+            'set_engine_strength': 'POST /set_engine_strength',
+            'get_capture_moves': 'GET /get_capture_moves',
+            'legal_moves': 'GET /legal_moves',
+            'compare_engines': 'POST /compare_engines'
+        }
+    })
+
 if __name__ == '__main__':
     print("=" * 60)
-    print("♟️  ADVANCED CHESS SERVER (REFACTORED)")
+    print("♟️  ADVANCED CHESS SERVER (WITH SWAGGER UI)")
     print("=" * 60)
-    print("📍 URL: http://localhost:5000")
+    print("📍 API URL: http://localhost:5000")
+    print("📚 Swagger UI: http://localhost:5000/api/docs")
+    print("📄 OpenAPI Spec: http://localhost:5000/api/swagger.json")
     print("\n📊 Features:")
     print("  ✓ FEN support in all endpoints")
     print("  ✓ Automatic position synchronization")
     print("  ✓ Multi-engine in make_move (Stockfish, Lichess, Chess.com)")
     print("  ✓ Analysis of ALL legal moves")
     print("  ✓ Configurable strength level (1-20)")
+    print("  ✓ Interactive Swagger UI for testing")
     print("\n🔌 Endpoints:")
     print("  POST /new_game - New game (supports FEN)")
     print("  POST /make_move - Move with selected engine")
@@ -631,5 +1252,9 @@ if __name__ == '__main__':
     print("  GET  /get_capture_moves - Captures only (supports FEN)")
     print("  GET  /legal_moves - Legal moves (supports FEN)")
     print("  POST /compare_engines - Compare engines (supports FEN)")
+    print("\n💡 Quick Start:")
+    print("  1. Install dependencies: pip install flask-swagger-ui")
+    print("  2. Visit http://localhost:5000/api/docs to test the API")
+    print("  3. Try the endpoints directly from the Swagger interface")
     print("=" * 60)
     app.run(debug=True, port=5000)
